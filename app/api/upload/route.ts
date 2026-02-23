@@ -9,28 +9,23 @@ const DEFAULT_EXPIRY = "72h"; // 1h, 12h, 24h, 72h
 
 export async function POST(req: NextRequest) {
   try {
-    const { content, mimeType, fileName, expiry } = (await req.json()) as {
-      content: string; // base64
-      mimeType: string;
-      fileName?: string;
-      expiry?: string;
-    };
-    if (!content || !mimeType) {
-      return NextResponse.json({ error: "Missing content or mimeType" }, { status: 400 });
+    const formData = await req.formData();
+    const file = formData.get("file") as File | null;
+    const expiry = formData.get("expiry") as string | null;
+
+    if (!file || file.size === 0) {
+      return NextResponse.json({ error: "Missing file" }, { status: 400 });
     }
-    const buf = Buffer.from(content, "base64");
-    if (buf.length > MAX_FILE_SIZE) {
+    if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json({ error: `File too large (${Math.round(MAX_FILE_SIZE / 1024 / 1024)}MB max)` }, { status: 413 });
     }
 
-    const ext = mimeType.split("/")[1]?.replace("jpeg", "jpg") || "bin";
-    const name = fileName || `file.${ext}`;
     const time = ["1h", "12h", "24h", "72h"].includes(expiry ?? "") ? expiry! : DEFAULT_EXPIRY;
 
     const form = new FormData();
     form.append("reqtype", "fileupload");
     form.append("time", time);
-    form.append("fileToUpload", new File([buf], name, { type: mimeType }));
+    form.append("fileToUpload", file);
 
     const res = await fetch(LITTERBOX_API, {
       method: "POST",
@@ -44,7 +39,7 @@ export async function POST(req: NextRequest) {
     }
 
     const url = (await res.text()).trim();
-    console.log("[Upload] success:", url, `(${(buf.length / 1024).toFixed(1)}KB, expires ${time})`);
+    console.log("[Upload] success:", url, `(${(file.size / 1024).toFixed(1)}KB, expires ${time})`);
     return NextResponse.json({ url });
   } catch (e) {
     console.error("[Upload] exception:", e);

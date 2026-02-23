@@ -1442,11 +1442,11 @@ export default function Home() {
   const uploadFiles = useCallback(async (attachments: ImageAttachment[]): Promise<string[]> => {
     const results = await Promise.allSettled(
       attachments.map(async (a) => {
-        const res = await fetch("/api/upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: a.content, mimeType: a.mimeType, fileName: a.fileName }),
-        });
+        const buf = Uint8Array.from(atob(a.content), (c) => c.charCodeAt(0));
+        const file = new File([buf], a.fileName, { type: a.mimeType });
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch("/api/upload", { method: "POST", body: form });
         if (!res.ok) return null;
         const { url } = await res.json();
         return url as string;
@@ -1492,22 +1492,17 @@ export default function Home() {
 
     // Upload attachments to litterbox (temporary hosting, 72h expiry) and
     // include the public URLs in the message text so the agent can fetch them.
-    // Also send as native `attachments` for vision-capable models.
     let messageText = text;
-    let nativeAttachments: { mimeType: string; fileName: string; content: string }[] | undefined;
     if (attachments?.length) {
       const urls = await uploadFiles(attachments);
       if (urls.length > 0) {
-        const urlLines = urls.map((url) => url).join("\n");
+        const urlLines = urls.join("\n");
         messageText = text ? `${text}\n\n${urlLines}` : urlLines;
       }
-      // Also send as native attachments for models with vision support
-      nativeAttachments = attachments.map((a) => ({
-        mimeType: a.mimeType,
-        fileName: a.fileName,
-        content: a.content,
-      }));
     }
+
+    // Bail if we ended up with nothing to send (e.g. no text and upload failed)
+    if (!messageText) return;
 
     // Demo mode
     if (isDemoMode || backendMode === "demo") {
@@ -1549,7 +1544,6 @@ export default function Home() {
         message: messageText,
         deliver: true,
         idempotencyKey: runId,
-        ...(nativeAttachments?.length ? { attachments: nativeAttachments } : {}),
       },
     });
 
