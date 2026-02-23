@@ -2,7 +2,7 @@
 
 All notable changes to MobileClaw are documented in this file.
 
-## [Unreleased]
+## 2026-02-23
 
 ### Added
 - Command response pills — slash commands render as expandable pills with spinner and auto-expand animation
@@ -13,11 +13,38 @@ All notable changes to MobileClaw are documented in this file.
 - `formatCommandsText()` — renders command groups as human-readable text for local `/commands` response
 - Demo mode slash command responses (`/commands`, `/status`, `/whoami`, `/context`, `/model`) with instant delivery
 - `--lp` CSS variable (layout progress) — deadzone-adjusted `--sp` that stays 0 until scroll > 5%, prevents subpixel rounding shifts at the start of morph transitions
-- Message queue — type while the agent is running; message auto-sends when the run ends
-- QueuePill UI with dismiss button (restores text to input)
-- `/compact` slash command in command palette
-- `hasUnquotedMarker` utility — detects markers outside double-quoted strings (prevents false positives on quoted NO_REPLY text)
-- Demo mode "long"/"essay" keyword for long-form streaming demo
+- Message send pop animation (scale 0.6→1.04→1 with spring easing, origin bottom-right)
+- GitHub Actions CI workflow (#10)
+
+### Fixed
+- Morph bar subpixel jitter — layout-affecting properties (`width`, `height`, `gap`, `padding`) now use `--lp` (deadzone) instead of raw `--sp`
+- Pull-to-refresh state stuck after backgrounding app — reset on visibilitychange
+- Hidden slash command messages filtered from display loop (no stale timestamps)
+- Tool call parts normalized from server history (status, toolCallId, arguments)
+- HEARTBEAT_OK now requires its own line to trigger heartbeat handling (#9)
+
+### Changed
+- Command palette trimmed — reorganized into Session / Options / Status / Skills / More groups with fewer commands
+- `/compact` command label shown in thinking indicator and tab title
+- Persist run-active state across page refresh
+- Server-echoed user messages and system-injected context handling
+
+## 2026-02-22
+
+### Added
+- Version API route (`/api/version`)
+
+### Fixed
+- `/model` picker now shows all configured providers including auth-only ones
+- Strip outermost `<final>` tags from assistant message text
+- rAF scroll-pinning loop during streaming (prevents tool call pills appearing below viewport)
+
+### Changed
+- Renamed page title from "OpenClaw Chat" to "MobileClaw"
+
+## 2026-02-21
+
+### Added
 - Context pills — expandable dark pills on user messages for system-injected context
 - Injected pills — centered expandable pills for heartbeat/no-reply assistant messages
 - Message merging — heartbeat/no-reply messages absorb preceding assistant content
@@ -28,6 +55,11 @@ All notable changes to MobileClaw are documented in this file.
 - Image upload API — `/api/upload` proxies to catbox.moe for public image URLs
 - Image lightbox — full-screen overlay with click/Escape to dismiss
 - Floating subagent panel — pinnable panel with live activity feed and swipe-to-dismiss
+- Message queue — type while the agent is running; message auto-sends when the run ends
+- QueuePill UI with dismiss button (restores text to input)
+- `/compact` slash command in command palette
+- `hasUnquotedMarker` utility — detects markers outside double-quoted strings (prevents false positives on quoted NO_REPLY text)
+- Demo mode "long"/"essay" keyword for long-form streaming demo
 - `SlideContent` component — reusable CSS grid slide animation extracted from ToolCallPill
 - `useExpandablePanel` hook — shared width + height animation logic for expandable pills
 - `useSwipeAction` hook — swipe-left-to-reveal gesture (iOS mail style)
@@ -37,7 +69,6 @@ All notable changes to MobileClaw are documented in this file.
 - `ImageAttachment` type and `chat.abort` WebSocket method
 
 ### Fixed
-- Morph bar subpixel jitter — layout-affecting properties (`width`, `height`, `gap`, `padding`) now use `--lp` (deadzone) instead of raw `--sp`
 - Service worker only registers on non-localhost (prevents dev caching issues)
 - Edit tool pills start expanded when loaded from history (no re-animation)
 - Tool pill expand toggle no longer shows for pills with no visible content
@@ -51,7 +82,6 @@ All notable changes to MobileClaw are documented in this file.
 - Removed duplicate `getTextFromContent` in lmStudio.ts (now imported from messageUtils)
 
 ### Changed
-- Command palette trimmed — reorganized into Session / Options / Status / Skills / More groups with fewer commands
 - Injected pills left-aligned with `bg-card` styling (was centered with `bg-secondary`)
 - Context pill text uses `text-primary-foreground/70` for softer contrast
 - ChatInput min-height simplified to fixed `46px` (was `calc` with `--sp`)
