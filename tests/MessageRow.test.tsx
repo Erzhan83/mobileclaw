@@ -93,4 +93,27 @@ describe("MessageRow", () => {
     render(<MessageRow message={message} isStreaming={false} />);
     expect(screen.getByText("some context data")).toBeInTheDocument();
   });
+
+  it("renders command response as expandable pill", () => {
+    const message: Message = {
+      role: "assistant",
+      content: [{ type: "text", text: "/status result\nMore details here" }],
+      id: "test-9",
+      isCommandResponse: true,
+    };
+    render(<MessageRow message={message} isStreaming={false} />);
+    // Summary should be "/status result"
+    expect(screen.getByText("/status result")).toBeInTheDocument();
+  });
+
+  it("renders command response spinner when text is empty", () => {
+    const message: Message = {
+      role: "assistant",
+      content: [],
+      id: "test-10",
+      isCommandResponse: true,
+    };
+    render(<MessageRow message={message} isStreaming={false} />);
+    expect(screen.getByText("Running...")).toBeInTheDocument();
+  });
 });

@@ -109,8 +109,8 @@ function InjectedPill({ text, message, subagentStore }: { text: string; message?
   const hasRichContent = !!(parts && parts.some((p) => p.type === "thinking" || isToolCallPart(p))) || !!message?.reasoning;
 
   return (
-    <div className="flex justify-center py-2">
-      <div ref={outerRef} onTransitionEnd={handleTransitionEnd} className="max-w-[85%] w-fit rounded-lg border border-border bg-secondary overflow-hidden transition-[width] duration-200 ease-out">
+    <div className="flex -mt-1.5">
+      <div ref={outerRef} onTransitionEnd={handleTransitionEnd} className="max-w-[85%] w-fit rounded-lg border border-border bg-card overflow-hidden transition-[width] duration-200 ease-out">
         <button
           type="button"
           onClick={toggle}
@@ -333,15 +333,68 @@ function UserTextWithQuotes({ text }: { text: string }) {
   );
 }
 
+// ── CommandResponsePill — expandable pill for slash command responses ────────
+
+function CommandResponsePill({ text, isStreaming }: { text: string; isStreaming?: boolean }) {
+  const [userToggled, setUserToggled] = useState<boolean | null>(null);
+  
+  // Robust summary extraction
+  const summary = (text.split("\n").filter(l => l.trim())[0] ?? text.slice(0, 80))
+    .replace(/[#*_~`>]/g, "").replace(/\s+/g, " ").trim();
+
+  const isHistory = !isStreaming;
+
+  return (
+    <div className="flex -mt-1.5">
+      <div className="max-w-[85%] w-fit rounded-lg bg-card border border-border overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setUserToggled((v) => v === null ? false : !v)}
+          className="w-full px-3 py-1.5 text-xs font-medium text-muted-foreground flex items-center gap-1.5 cursor-pointer"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
+            <polyline points="4 17 10 11 4 5" />
+            <line x1="12" y1="19" x2="20" y2="19" />
+          </svg>
+          <span className="truncate">{summary}</span>
+          <svg
+            width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            className="ml-auto shrink-0 opacity-40 transition-transform duration-200"
+            style={{ transform: (userToggled ?? !isStreaming ?? true) ? "rotate(0deg)" : "rotate(-90deg)" }}
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+        <div
+          className="grid overflow-hidden"
+          style={userToggled !== null
+            ? { gridTemplateRows: userToggled ? "1fr" : "0fr", transition: "grid-template-rows 200ms ease-out" }
+            : isHistory
+              ? { gridTemplateRows: "1fr" }
+              : { animation: "gridSlideOpen 250ms ease-out forwards" }
+          }
+        >
+          <div className="min-h-0">
+            <div className="border-t border-border px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap break-words text-foreground/80">
+              {text}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ContextPill({ summary, iconEl, text }: { summary: string; iconEl: React.ReactNode; text: string }) {
   const { open, toggle, mounted, expanded, outerRef, contentRef, handleTransitionEnd } = useExpandablePanel();
 
   return (
     <div className="flex flex-row-reverse">
-      <div ref={outerRef} onTransitionEnd={handleTransitionEnd} className="max-w-[85%] md:max-w-[75%] w-fit rounded-2xl rounded-br-md bg-primary text-primary-foreground overflow-hidden transition-[width] duration-200 ease-out">
+      <div ref={outerRef} onTransitionEnd={handleTransitionEnd} className="max-w-[85%] md:max-w-[75%] w-fit rounded-2xl rounded-br-md bg-primary overflow-hidden transition-[width] duration-200 ease-out">
         <button
           onClick={toggle}
-          className="cursor-pointer rounded-[inherit] w-full px-3 py-1.5 text-xs font-medium flex items-center gap-1.5"
+          className="cursor-pointer rounded-[inherit] w-full px-3 py-1.5 text-xs font-medium text-primary-foreground/70 flex items-center gap-1.5"
         >
           {iconEl}
           <span className="truncate">{summary}</span>
@@ -359,7 +412,7 @@ function ContextPill({ summary, iconEl, text }: { summary: string; iconEl: React
             style={{ gridTemplateRows: expanded ? "1fr" : "0fr" }}
           >
             <div className="overflow-hidden min-h-0">
-              <div ref={contentRef} className="border-t border-primary-foreground/20 px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap break-words opacity-80">
+              <div ref={contentRef} className="border-t border-primary-foreground/15 px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap break-words text-primary-foreground/70">
                 {text}
               </div>
             </div>
@@ -378,6 +431,25 @@ export function MessageRow({ message, isStreaming, subagentStore, pinnedToolCall
 
   if (message.role === "toolResult" || message.role === "tool_result" || message.role === "tool") {
     return null;
+  }
+
+  if (message.isHidden) return null;
+
+  // Command response pill — expandable pill for slash command responses
+  if (message.isCommandResponse) {
+    if (!text) {
+      return (
+        <div key="loading" className="flex -mt-1.5">
+          <div className="w-fit rounded-lg bg-card border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0 opacity-50 animate-spin">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+            <span>Running...</span>
+          </div>
+        </div>
+      );
+    }
+    return <CommandResponsePill key={message.id} text={text} isStreaming={isStreaming} />;
   }
 
   // Context pill — expandable pill for system-injected user messages

@@ -96,6 +96,7 @@ interface DemoResponse {
   }[];
   text: string;
   delayMs?: number; // Extra delay before text starts (e.g. for /compact simulation)
+  instant?: boolean; // Deliver text all at once (slash command responses)
 }
 
 const RESPONSES: Record<string, DemoResponse> = {
@@ -366,9 +367,35 @@ The most important principle is this: **design for failure**. Networks are unrel
   compact: {
     text: "Conversation compacted. Reduced from **47 messages** (12,840 tokens) to **summary + last 5 messages** (2,160 tokens). Context savings: **83%**.",
     delayMs: 5000,
+    instant: true,
+  },
+  commands: {
+    text: "/help · /commands · /status · /model · /compact · /whoami · /context · /queue · /allowlist · /approve · /subagents · /config · /activation · /send · /tts · /restart · /skill · /coding_agent · /research · /weather · /github · /apple_notes · /apple_reminders · /bluebubbles · /clawhub · /gemini · /healthcheck · /nano_banana_pro · /peekaboo · /session_logs · /skill_creator · /tmux · /video_frames · /youtube",
+    instant: true,
+  },
+  status: {
+    text: "**Session Status**\n\nModel: claude-sonnet-4-5 (Anthropic)\nSession: demo-abc-1234\nUptime: 2h 15m\nMessages: 12 sent · 8 received\nQueue: empty\nSubagents: 0 active\nMode: demo",
+    instant: true,
+  },
+  whoami: {
+    text: "Sender ID: demo-user-42\nDisplay name: Demo User\nAuth: local (demo mode)",
+    instant: true,
+  },
+  context: {
+    text: "**Context Configuration**\n\nContext is built from:\n1. System prompt (base instructions)\n2. Conversation history (last 50 messages)\n3. Active tool results\n4. User profile metadata\n\nCurrent token usage: ~2,100 / 200,000 (1%)",
+    instant: true,
+  },
+  model: {
+    text: "Current model: **claude-sonnet-4-5** (Anthropic)\n\nAvailable models:\n- claude-sonnet-4-5 (Anthropic) · 200k context\n- claude-opus-4-5 (Anthropic) · 200k context · reasoning\n- gpt-4o (OpenAI) · 128k context\n- gemini-2.5-pro (Google) · 1M context · reasoning",
+    instant: true,
+  },
+  slashDefault: {
+    text: "Command not available in demo mode. Try /help to see available commands.",
+    instant: true,
   },
   help: {
-    text: "## Demo Mode Commands\n\nTry these keywords to see different UI features:\n\n| Keyword | What it shows |\n|---------|---------------|\n| **weather** | Thinking + tool call + formatted result |\n| **code** / **function** | Thinking + file read + code blocks |\n| **edit** / **fix** | File read + inline diff display |\n| **image** / **picture** | Markdown image rendering |\n| **think** / **reason** | Extended reasoning + markdown |\n| **error** / **fail** | Chained tool calls that error |\n| **research** / **search** | Multi-step web search + reading |\n| **agent** / **project** | Full agent workflow: exec + read + sub-agent |\n| **subagent** / **spawn** | Live sub-agent activity feed |\n| **long** / **essay** | Long-form streaming (~1 minute) |\n| **/compact** | Compacting animation (5s) |\n| **help** | This list |\n\nYou can also try the **command palette** — tap the `/>` button to browse available OpenClaw slash commands.\n\n### About MobileClaw\n\nThis is a mobile-first chat UI for [OpenClaw](https://github.com/wende/mobileclaw). To connect to a real server, tap the claw icon in the header and enter your server URL.",
+    text: "## Demo Mode Commands\n\nTry these keywords to see different UI features:\n\n| Keyword | What it shows |\n|---------|---------------|\n| **weather** | Thinking + tool call + formatted result |\n| **code** / **function** | Thinking + file read + code blocks |\n| **edit** / **fix** | File read + inline diff display |\n| **image** / **picture** | Markdown image rendering |\n| **think** / **reason** | Extended reasoning + markdown |\n| **error** / **fail** | Chained tool calls that error |\n| **research** / **search** | Multi-step web search + reading |\n| **agent** / **project** | Full agent workflow: exec + read + sub-agent |\n| **subagent** / **spawn** | Live sub-agent activity feed |\n| **long** / **essay** | Long-form streaming (~1 minute) |\n| **/compact** | Compacting animation (5s) |\n| **help** | This list |\n\nSlash commands render as expandable pills — try **/commands**, **/status**, **/model**, **/whoami**, or **/context**.\n\nYou can also try the **command palette** — tap the `/>` button to browse available OpenClaw slash commands.\n\n### About MobileClaw\n\nThis is a mobile-first chat UI for [OpenClaw](https://github.com/wende/mobileclaw). To connect to a real server, tap the claw icon in the header and enter your server URL.",
+    instant: true,
   },
 };
 
@@ -381,8 +408,16 @@ const DEFAULT_RESPONSE: DemoResponse = {
 
 function matchResponse(input: string): DemoResponse {
   const lower = input.toLowerCase().trim();
-  if (lower.startsWith("/compact"))
-    return RESPONSES.compact;
+  // Slash commands — match before keywords
+  if (lower.startsWith("/compact")) return RESPONSES.compact;
+  if (lower.startsWith("/commands")) return RESPONSES.commands;
+  if (lower.startsWith("/status")) return RESPONSES.status;
+  if (lower.startsWith("/whoami") || lower.startsWith("/id")) return RESPONSES.whoami;
+  if (lower.startsWith("/context")) return RESPONSES.context;
+  if (lower.startsWith("/model")) return RESPONSES.model;
+  if (lower.startsWith("/help")) return RESPONSES.help;
+  if (lower.startsWith("/")) return RESPONSES.slashDefault;
+  // Keyword matching
   if (lower.includes("weather") || lower.includes("forecast") || lower.includes("temperature"))
     return RESPONSES.weather;
   if (lower.includes("image") || lower.includes("picture") || lower.includes("photo") || lower.includes("img"))
@@ -486,18 +521,22 @@ export function createDemoHandler(callbacks: DemoCallbacks) {
     // Extra delay (e.g. for /compact simulation)
     if (response.delayMs) delay += response.delayMs;
 
-    // Stream text word-by-word
-    const words = response.text.split(/(\s+)/);
-    let accumulated = "";
-    for (let i = 0; i < words.length; i++) {
-      accumulated += words[i];
-      const snap = accumulated;
-      timers.push(setTimeout(() => callbacks.onTextDelta(runId, words[i], snap), delay));
-      // Variable delay: longer for punctuation, shorter for whitespace
-      if (!words[i].trim()) continue;
-      if (/[.!?]$/.test(words[i])) delay += 80 + Math.random() * 60;
-      else if (/[,;:]$/.test(words[i])) delay += 40 + Math.random() * 30;
-      else delay += 20 + Math.random() * 25;
+    // Deliver text — instant for slash commands, streamed word-by-word otherwise
+    if (response.instant) {
+      timers.push(setTimeout(() => callbacks.onTextDelta(runId, response.text, response.text), delay));
+    } else {
+      const words = response.text.split(/(\s+)/);
+      let accumulated = "";
+      for (let i = 0; i < words.length; i++) {
+        accumulated += words[i];
+        const snap = accumulated;
+        timers.push(setTimeout(() => callbacks.onTextDelta(runId, words[i], snap), delay));
+        // Variable delay: longer for punctuation, shorter for whitespace
+        if (!words[i].trim()) continue;
+        if (/[.!?]$/.test(words[i])) delay += 80 + Math.random() * 60;
+        else if (/[,;:]$/.test(words[i])) delay += 40 + Math.random() * 30;
+        else delay += 20 + Math.random() * 25;
+      }
     }
 
     delay += 200;

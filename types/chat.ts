@@ -39,6 +39,8 @@ export interface Message {
   isError?: boolean;
   stopReason?: string;
   isContext?: boolean;
+  isCommandResponse?: boolean;
+  isHidden?: boolean;
   thinkingDuration?: number; // Seconds spent "thinking" before first content
   runDuration?: number; // Total seconds the run took (lifecycle start → end)
 }

@@ -57,9 +57,14 @@ export function useScrollManager(
     const target = morphTargetSp.current;
     const diff = target - current;
 
+    // Layout progress with deadzone: stays 0 until --sp > 0.05, prevents
+    // subpixel rounding shifts at the very start of the morph.
+    const toLp = (sp: number) => sp < 0.05 ? 0 : (sp - 0.05) / 0.95;
+
     if (Math.abs(diff) < 0.002) {
       morphCurrentSp.current = target;
       morph.style.setProperty("--sp", target.toFixed(3));
+      morph.style.setProperty("--lp", toLp(target).toFixed(3));
       const newPhase: "input" | "pill" = target > 0.4 ? "pill" : "input";
       if (newPhase !== scrollPhaseRef.current) {
         scrollPhaseRef.current = newPhase;
@@ -71,6 +76,7 @@ export function useScrollManager(
     const next = current + diff * 0.2;
     morphCurrentSp.current = next;
     morph.style.setProperty("--sp", next.toFixed(3));
+    morph.style.setProperty("--lp", toLp(next).toFixed(3));
 
     const newPhase: "input" | "pill" = next > 0.4 ? "pill" : "input";
     if (newPhase !== scrollPhaseRef.current) {

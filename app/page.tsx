@@ -283,6 +283,23 @@ export default function Home() {
     tagBuffer: string;
   }>({ insideThinkTag: false, tagBuffer: "" });
 
+  const getEffectiveRunId = useCallback((serverRunId: string) => {
+    const mappedId = cmdRunIdMapRef.current.get(serverRunId);
+    if (mappedId) return mappedId;
+
+    if (lastCommandRef.current) {
+      const mappedValues = new Set(cmdRunIdMapRef.current.values());
+      const placeholder = messagesRef.current.findLast(
+        (m) => m.isCommandResponse && m.role === "assistant" && m.id && !mappedValues.has(m.id)
+      );
+      if (placeholder && placeholder.id) {
+        cmdRunIdMapRef.current.set(serverRunId, placeholder.id);
+        return placeholder.id;
+      }
+    }
+    return serverRunId;
+  }, []);
+
   // Notification: extract message preview and fire notification for a completed run
   const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
@@ -1439,10 +1456,12 @@ export default function Home() {
   }, []);
 
   const lastCommandRef = useRef<string | null>(null);
+  const cmdRunIdMapRef = useRef<Map<string, string>>(new Map());
 
   const sendMessage = useCallback(async (text: string, attachments?: ImageAttachment[]) => {
     console.log("[sendMessage]", { text: text.slice(0, 50), attachments: attachments?.length ?? 0 });
-    lastCommandRef.current = text.trim().startsWith("/") ? text.trim().split(/\s/)[0].toLowerCase() : null;
+    const isSlashCommand = text.trim().startsWith("/");
+    lastCommandRef.current = isSlashCommand ? text.trim().split(/\s/)[0].toLowerCase() : null;
     requestNotificationPermission();
     pinnedToBottomRef.current = true;
 
@@ -1454,9 +1473,17 @@ export default function Home() {
       }
     }
 
-    const userMsg: Message = { role: "user", content: contentParts, id: `u-${Date.now()}`, timestamp: Date.now() };
+    const userMsg: Message = { role: "user", content: contentParts, id: `u-${Date.now()}`, timestamp: Date.now(), isHidden: isSlashCommand };
     setSentAnimId(userMsg.id!);
-    setMessages((prev) => [...prev, userMsg]);
+
+    if (isSlashCommand) {
+      // Create a placeholder assistant message for the command response
+      const placeholderId = `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const placeholder: Message = { role: "assistant", content: [], id: placeholderId, timestamp: Date.now(), isCommandResponse: true };
+      setMessages((prev) => [...prev, userMsg, placeholder]);
+    } else {
+      setMessages((prev) => [...prev, userMsg]);
+    }
 
     // Upload images in parallel, build message text with public URLs
     let messageText = text;
@@ -1753,9 +1780,9 @@ export default function Home() {
         ref={floatingBarRef}
         className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center px-3 pb-[3dvh] md:px-6 md:pb-[3dvh] animate-[fadeIn_400ms_ease-out]"
       >
-        <div ref={morphRef} className="pointer-events-auto w-full" style={{ maxWidth: "min(calc(200px + (100% - 200px) * (1 - var(--sp, 0))), calc(200px + (42rem - 200px) * (1 - var(--sp, 0))))" } as React.CSSProperties}>
+        <div ref={morphRef} className="pointer-events-auto w-full" style={{ maxWidth: "min(calc(200px + (100% - 200px) * (1 - var(--lp, 0))), calc(200px + (42rem - 200px) * (1 - var(--lp, 0))))" } as React.CSSProperties}>
           {pinnedSubagent && (
-            <div style={{ paddingLeft: "calc(48px * (1 - var(--sp, 0)))", paddingRight: "calc(48px * (1 - var(--sp, 0)))" } as React.CSSProperties}>
+            <div style={{ paddingLeft: "calc(48px * (1 - var(--lp, 0)))", paddingRight: "calc(48px * (1 - var(--lp, 0)))" } as React.CSSProperties}>
               <FloatingSubagentPanel
                 toolCallId={pinnedSubagent.toolCallId}
                 childSessionKey={pinnedSubagent.childSessionKey}
@@ -1767,7 +1794,7 @@ export default function Home() {
             </div>
           )}
           {queuedMessage && (
-            <div style={{ paddingLeft: "calc(48px * (1 - var(--sp, 0)))", paddingRight: "calc(48px * (1 - var(--sp, 0)))" } as React.CSSProperties}>
+            <div style={{ paddingLeft: "calc(48px * (1 - var(--lp, 0)))", paddingRight: "calc(48px * (1 - var(--lp, 0)))" } as React.CSSProperties}>
               <QueuePill text={queuedMessage.text} onDismiss={() => {
                 chatInputRef.current?.setValue(queuedMessage.text);
                 setQueuedMessage(null);

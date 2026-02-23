@@ -16,75 +16,95 @@ export interface CommandGroup {
 
 export const COMMAND_GROUPS: CommandGroup[] = [
   {
+    label: "Session",
+    commands: [
+      { name: "/new", description: "Start a new conversation." },
+      { name: "/reset", description: "Reset the current session." },
+      { name: "/compact", description: "Compact conversation to reduce token count." },
+      { name: "/stop", description: "Stop the current run." },
+    ],
+  },
+  {
+    label: "Options",
+    commands: [
+      { name: "/think", description: "Toggle extended thinking." },
+      { name: "/model", description: "Show or change the current AI model." },
+      { name: "/verbose", description: "Toggle verbose output." },
+      { name: "/config", description: "Show or set config values." },
+    ],
+  },
+  {
     label: "Status",
     commands: [
-      { name: "/help", description: "Show available commands." },
-      { name: "/commands", description: "List all slash commands." },
       { name: "/status", description: "Show current status." },
-      { name: "/model", description: "Show or change the current AI model." },
-      { name: "/context", description: "Explain how context is built and used." },
       { name: "/whoami", description: "Show your sender id.", aliases: ["/id"] },
-      { name: "/compact", description: "Compact current conversation to reduce token count." },
+      { name: "/context", description: "Explain how context is built and used." },
     ],
   },
   {
-    label: "Management",
-    commands: [
-      { name: "/queue", description: "Adjust queue settings." },
-      { name: "/allowlist", description: "List/add/remove allowlist entries." },
-      { name: "/approve", description: "Approve or deny exec requests." },
-      { name: "/subagents", description: "List/stop/log/info subagent runs for this session." },
-      { name: "/config", description: "Show or set config values." },
-      { name: "/activation", description: "Set group activation mode." },
-      { name: "/send", description: "Set send policy." },
-    ],
-  },
-  {
-    label: "Media",
-    commands: [
-      { name: "/tts", description: "Control text-to-speech (TTS)." },
-    ],
-  },
-  {
-    label: "Tools",
+    label: "Skills",
     commands: [
       { name: "/skill", description: "Run a skill by name." },
-      { name: "/restart", description: "Restart OpenClaw." },
-      { name: "/apple_notes", description: "Manage Apple Notes via the memo CLI on macOS." },
-      { name: "/apple_reminders", description: "Manage Apple Reminders via the remindctl CLI on macOS." },
-      { name: "/bluebubbles", description: "Build or update the BlueBubbles external channel plugin." },
-      { name: "/clawhub", description: "Search, install, update, and publish agent skills." },
-      { name: "/coding_agent", description: "Run Codex CLI, Claude Code, or Pi Coding Agent." },
-      { name: "/gemini", description: "Gemini CLI for one-shot Q&A, summaries, and generation." },
-      { name: "/github", description: "Interact with GitHub using the gh CLI." },
-      { name: "/healthcheck", description: "Host security hardening and risk-tolerance config." },
-      { name: "/nano_banana_pro", description: "Generate or edit images via Gemini 3 Pro Image." },
-      { name: "/openai_image_gen", description: "Batch-generate images via OpenAI Images API." },
-      { name: "/openai_whisper_api", description: "Transcribe audio via OpenAI Whisper." },
-      { name: "/peekaboo", description: "Capture and automate macOS UI with Peekaboo CLI." },
-      { name: "/session_logs", description: "Search and analyze your own session logs." },
-      { name: "/skill_creator", description: "Create or update AgentSkills." },
-      { name: "/tmux", description: "Remote-control tmux sessions." },
-      { name: "/video_frames", description: "Extract frames or clips from videos using ffmpeg." },
-      { name: "/weather", description: "Get current weather and forecasts." },
-      { name: "/apple_calendar", description: "Apple Calendar.app integration for macOS." },
-      { name: "/claude_image_analyzer", description: "Describe images in detail using Claude Code CLI." },
-      { name: "/google_workspace", description: "Interact with Google Workspace services." },
-      { name: "/research", description: "Deep research methodology for sub-agents." },
-      { name: "/youtube", description: "Summarize YouTube videos, extract transcripts." },
     ],
   },
   {
-    label: "Docks",
+    label: "More",
     commands: [
-      { name: "/dock_telegram", description: "Switch to Telegram for replies.", aliases: ["/dock-telegram"] },
-      { name: "/dock_discord", description: "Switch to Discord for replies.", aliases: ["/dock-discord"] },
-      { name: "/dock_slack", description: "Switch to Slack for replies.", aliases: ["/dock-slack"] },
+      { name: "/commands", description: "List all slash commands." },
+      { name: "/help", description: "Show available commands." },
     ],
   },
 ];
 
+/** Parse the text output of `/commands` into a Command array. */
+export function parseServerCommands(text: string): Command[] {
+  const seen = new Set<string>();
+  const result: Command[] = [];
+  for (const line of text.split("\n")) {
+    // Split by pipe — some lines list multiple commands separated by |
+    for (const segment of line.split("|")) {
+      const match = segment.match(/\/([\w._-]+)/);
+      if (!match) continue;
+      const name = `/${match[1]}`;
+      if (seen.has(name)) continue;
+      seen.add(name);
+      // Extract description: strip the command name, strip [args]/<args>, strip leading separators
+      let desc = segment
+        .replace(/\/[\w._-]+/, "")
+        .replace(/\[.*?\]/g, "")
+        .replace(/<.*?>/g, "")
+        .replace(/^[\s—\-:]+/, "")
+        .replace(/[\s—\-:]+$/, "")
+        .trim();
+      if (!desc) desc = name;
+      result.push({ name, description: desc });
+    }
+  }
+  return result;
+}
+
 export const ALL_COMMANDS: Command[] = COMMAND_GROUPS.flatMap((g) => g.commands);
+
+/** Format commands as a human-readable text block (used for local /commands response). */
+export function formatCommandsText(coreGroups: CommandGroup[], extra: Command[]): string {
+  const lines: string[] = [];
+  for (const g of coreGroups) {
+    lines.push(`**${g.label}**`);
+    for (const cmd of g.commands) {
+      const aliases = cmd.aliases?.length ? ` (${cmd.aliases.join(", ")})` : "";
+      lines.push(`  ${cmd.name}${aliases} — ${cmd.description}`);
+    }
+    lines.push("");
+  }
+  if (extra.length > 0) {
+    lines.push("**Server**");
+    for (const cmd of extra) {
+      lines.push(`  ${cmd.name} — ${cmd.description}`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n").trim();
+}
 
 export function CommandSheet({
   open,

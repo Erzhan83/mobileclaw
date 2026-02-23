@@ -5,6 +5,14 @@ All notable changes to MobileClaw are documented in this file.
 ## [Unreleased]
 
 ### Added
+- Command response pills — slash commands render as expandable pills with spinner and auto-expand animation
+- `CommandResponsePill` component with CSS-only `gridSlideOpen` animation (no JS timing needed)
+- `isCommandResponse` and `isHidden` flags on `Message` type for slash command UX
+- `getEffectiveRunId` — maps server run IDs to client placeholder IDs for seamless command response filling
+- `parseServerCommands()` — parses `/commands` text output into structured `Command[]`
+- `formatCommandsText()` — renders command groups as human-readable text for local `/commands` response
+- Demo mode slash command responses (`/commands`, `/status`, `/whoami`, `/context`, `/model`) with instant delivery
+- `--lp` CSS variable (layout progress) — deadzone-adjusted `--sp` that stays 0 until scroll > 5%, prevents subpixel rounding shifts at the start of morph transitions
 - Message queue — type while the agent is running; message auto-sends when the run ends
 - QueuePill UI with dismiss button (restores text to input)
 - `/compact` slash command in command palette
@@ -29,6 +37,7 @@ All notable changes to MobileClaw are documented in this file.
 - `ImageAttachment` type and `chat.abort` WebSocket method
 
 ### Fixed
+- Morph bar subpixel jitter — layout-affecting properties (`width`, `height`, `gap`, `padding`) now use `--lp` (deadzone) instead of raw `--sp`
 - Service worker only registers on non-localhost (prevents dev caching issues)
 - Edit tool pills start expanded when loaded from history (no re-animation)
 - Tool pill expand toggle no longer shows for pills with no visible content
@@ -42,6 +51,10 @@ All notable changes to MobileClaw are documented in this file.
 - Removed duplicate `getTextFromContent` in lmStudio.ts (now imported from messageUtils)
 
 ### Changed
+- Command palette trimmed — reorganized into Session / Options / Status / Skills / More groups with fewer commands
+- Injected pills left-aligned with `bg-card` styling (was centered with `bg-secondary`)
+- Context pill text uses `text-primary-foreground/70` for softer contrast
+- ChatInput min-height simplified to fixed `46px` (was `calc` with `--sp`)
 - ChatInput converted to `forwardRef` with imperative `setValue` handle
 - Send button has three crossfading states: stop, queue, send
 - `@treelocator/runtime` bumped to 0.3.1 (lazy-imported in dev)

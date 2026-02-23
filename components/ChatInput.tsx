@@ -383,7 +383,7 @@ export const ChatInput = forwardRef<ChatInputHandle, {
 
       <div
         className="flex items-end justify-center"
-        style={{ gap: "calc(8px * (1 - var(--sp, 0)))" }}
+        style={{ gap: "calc(8px * (1 - var(--lp, 0)))" } as React.CSSProperties}
       >
       {/* Image picker button — fades & collapses */}
       <button
@@ -392,8 +392,8 @@ export const ChatInput = forwardRef<ChatInputHandle, {
         className="mb-1 flex shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-[opacity] duration-200 hover:bg-accent hover:text-foreground overflow-hidden"
         style={{
           opacity: "max(0, 1 - var(--sp, 0) * 2.5)",
-          width: "calc(40px * (1 - var(--sp, 0)))",
-          height: "calc(40px * (1 - var(--sp, 0)))",
+          width: "calc(40px * (1 - var(--lp, 0)))",
+          height: "calc(40px * (1 - var(--lp, 0)))",
           minWidth: 0,
           pointerEvents: isPill ? "none" : "auto",
         } as React.CSSProperties}
@@ -412,8 +412,8 @@ export const ChatInput = forwardRef<ChatInputHandle, {
         tabIndex={isPill ? 0 : undefined}
         onKeyDown={isPill ? (e: React.KeyboardEvent) => { if (e.key === "Enter") onScrollToBottom?.(); } : undefined}
         style={{
-          minHeight: "calc(46px - 6px * var(--sp, 0))",
-          maxHeight: "calc(200px - 160px * var(--sp, 0))",
+          minHeight: "46px",
+          maxHeight: "calc(200px - 154px * var(--lp, 0))",
           cursor: isPill ? "pointer" : "text",
           background: "oklch(from var(--card) l c h / calc(0.9 - 0.5 * var(--sp, 0)))",
         } as React.CSSProperties}
