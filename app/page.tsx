@@ -1447,11 +1447,19 @@ export default function Home() {
         const form = new FormData();
         form.append("file", file);
         const res = await fetch("/api/upload", { method: "POST", body: form });
-        if (!res.ok) return null;
+        if (!res.ok) {
+          const errText = await res.text().catch(() => "");
+          console.error("[Upload] failed:", res.status, errText, a.fileName);
+          return null;
+        }
         const { url } = await res.json();
+        console.log("[Upload]", a.fileName, "→", url);
         return url as string;
       })
     );
+    for (const r of results) {
+      if (r.status === "rejected") console.error("[Upload] rejected:", r.reason);
+    }
     return results
       .filter((r): r is PromiseFulfilledResult<string | null> => r.status === "fulfilled")
       .map((r) => r.value)
@@ -1469,16 +1477,20 @@ export default function Home() {
     pinnedToBottomRef.current = true;
 
     // Show user message immediately with local previews
-    const contentParts: ContentPart[] = [{ type: "text", text }];
+    const contentParts: ContentPart[] = [];
+    if (text) contentParts.push({ type: "text", text });
     if (attachments?.length) {
       for (const a of attachments) {
         if (a.mimeType.startsWith("image/")) {
           contentParts.push({ type: "image_url", image_url: { url: `data:${a.mimeType};base64,${a.content}` } });
+        } else {
+          contentParts.push({ type: "file", file_name: a.fileName, file_mime: a.mimeType });
         }
       }
     }
 
-    const userMsg: Message = { role: "user", content: contentParts, id: `u-${Date.now()}`, timestamp: Date.now(), isHidden: isSlashCommand };
+    const userMsgId = `u-${Date.now()}`;
+    const userMsg: Message = { role: "user", content: contentParts, id: userMsgId, timestamp: Date.now(), isHidden: isSlashCommand };
     setSentAnimId(userMsg.id!);
 
     if (isSlashCommand) {
@@ -1498,6 +1510,21 @@ export default function Home() {
       if (urls.length > 0) {
         const urlLines = urls.join("\n");
         messageText = text ? `${text}\n\n${urlLines}` : urlLines;
+        // Update file parts with their upload URLs
+        setMessages((prev) => prev.map((m) => {
+          if (m.id !== userMsgId) return m;
+          const parts = m.content as ContentPart[];
+          let urlIdx = 0;
+          const updated = parts.map((p) => {
+            if (p.type === "file" && urlIdx < urls.length) {
+              return { ...p, file_url: urls[urlIdx++] };
+            }
+            return p;
+          });
+          return { ...m, content: updated };
+        }));
+      } else {
+        console.error("[Upload] all uploads failed for", attachments.length, "file(s)");
       }
     }
 
