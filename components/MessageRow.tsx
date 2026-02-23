@@ -433,8 +433,6 @@ export function MessageRow({ message, isStreaming, subagentStore, pinnedToolCall
     return null;
   }
 
-  if (message.isHidden) return null;
-
   // Command response pill — expandable pill for slash command responses
   if (message.isCommandResponse) {
     if (!text) {

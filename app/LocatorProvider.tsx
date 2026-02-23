@@ -7,5 +7,5 @@ export function LocatorProvider({ children }: { children: React.ReactNode }) {
       import("@treelocator/runtime").then((m) => m.default());
     }
   }, []);
-  return <>{children}</>;
+  return children;
 }

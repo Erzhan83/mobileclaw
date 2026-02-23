@@ -1666,7 +1666,7 @@ export default function Home() {
       }
       result.push(msg);
     }
-    return result;
+    return result.filter((m) => !m.isHidden);
   }, [messages]);
 
   // ── Render ────────────────────────────────────────────────────────────────
