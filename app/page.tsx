@@ -1145,6 +1145,8 @@ export default function Home() {
     if (getSearchParam("detached") !== null) {
       setIsDetached(true);
       isDetachedRef.current = true;
+      document.body.style.background = "transparent";
+      document.documentElement.style.background = "transparent";
     }
     if (getSearchParam("upload") === "false") {
       setUploadDisabled(true);
@@ -1707,11 +1709,13 @@ export default function Home() {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const inputZoneHeight = isDetached ? "calc(1.5dvh + 3.5rem)" : "calc(3dvh + 4rem)";
-  const bottomPad = pinnedSubagent ? "10rem" : queuedMessage ? "7rem" : "4rem";
+  const inputZoneHeight = "calc(1.5dvh + 3.5rem)";
+  const bottomPad = pinnedSubagent ? (isDetached ? "10rem" : "16rem")
+    : queuedMessage ? (isDetached ? "7rem" : "13rem")
+    : (isDetached ? "4rem" : "10rem");
 
   const chatWidget = (
-    <div ref={appRef} className={`relative flex flex-col overflow-hidden ${isDetached ? "" : "bg-muted"}`} style={{ height: "100dvh" }}>
+    <div ref={appRef} className={`relative flex flex-col overflow-hidden ${isDetached ? "" : "bg-background"}`} style={{ height: "100dvh" }}>
       {!isDetached && (
         <>
           <SetupDialog
@@ -1736,12 +1740,14 @@ export default function Home() {
         </>
       )}
 
-      <div ref={pullContentRef} className={`flex flex-1 flex-col min-h-0 ${isDetached ? "px-2 pt-2" : ""}`}>
+      <div ref={pullContentRef} className={`relative flex flex-1 flex-col min-h-0 ${isDetached ? "px-3 pt-3" : ""}`}>
+        <div className={`pointer-events-none absolute z-20 h-7 opacity-60 ${isDetached ? "inset-x-3 top-3 rounded-t-2xl" : "inset-x-0 top-[60px]"}`} style={{ background: "linear-gradient(to bottom, #FAFAFA 40%, transparent)" }} />
+        <div className={`pointer-events-none absolute z-20 h-7 opacity-60 ${isDetached ? "inset-x-3 rounded-b-2xl" : "inset-x-0"}`} style={{ bottom: isDetached ? inputZoneHeight : 0, background: "linear-gradient(to top, #FAFAFA 40%, transparent)" }} />
         <main
           ref={scrollRef}
           onScroll={handleScroll}
           className={`flex-1 overflow-y-auto overflow-x-hidden bg-background ${isDetached ? "rounded-2xl" : "pt-14"}`}
-          style={{ overscrollBehavior: "none" }}
+          style={{ overscrollBehavior: "none", ...(isDetached ? { boxShadow: "0 -4px 6px -1px rgb(0 0 0 / 0.06), 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)" } : {}) }}
         >
           <div className={`mx-auto flex w-full ${isDetached ? "max-w-none" : "max-w-2xl"} flex-col gap-3 px-4 py-6 md:px-6 md:py-4 transition-opacity duration-300 ease-out ${historyLoaded ? "opacity-100" : "opacity-0"}`} style={{ paddingBottom: bottomPad }}>
             {displayMessages.map((msg, idx) => {
@@ -1783,8 +1789,8 @@ export default function Home() {
             <div ref={bottomRef} />
           </div>
         </main>
-        {/* Spacer — pushes main's bg-background up so the input bar floats on bg-muted */}
-        <div style={{ height: inputZoneHeight, flexShrink: 0 }} />
+        {/* Spacer (detached only) — pushes main's bg up so the input bar floats on transparent bg */}
+        {isDetached && <div style={{ height: inputZoneHeight, flexShrink: 0 }} />}
         {/* Pull-to-refresh spinner */}
         {!isDetached && (
           <div
