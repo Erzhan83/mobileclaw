@@ -1703,12 +1703,10 @@ export default function Home() {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const bottomPad = pinnedSubagent ? (isDetached ? "12rem" : "16rem")
-    : queuedMessage ? (isDetached ? "9rem" : "13rem")
-    : (isDetached ? "6rem" : "10rem");
+  const bottomPad = pinnedSubagent ? "16rem" : queuedMessage ? "13rem" : "10rem";
 
   const chatWidget = (
-    <div ref={appRef} className="relative flex flex-col overflow-hidden bg-background" style={{ height: isDetached ? "100%" : "100dvh" }}>
+    <div ref={appRef} className="relative flex flex-col overflow-hidden bg-background" style={{ height: "100dvh" }}>
       {!isDetached && (
         <>
           <SetupDialog
@@ -1819,7 +1817,7 @@ export default function Home() {
       {/* Floating morphing bar */}
       <div
         ref={floatingBarRef}
-        className={`pointer-events-none ${isDetached ? "absolute" : "fixed"} inset-x-0 bottom-0 z-20 flex justify-center ${isDetached ? "px-3 pb-3" : "px-3 pb-[3dvh] md:px-6 md:pb-[3dvh]"} animate-[fadeIn_400ms_ease-out]`}
+        className={`pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center px-3 ${isDetached ? "pb-[1.5dvh]" : "pb-[3dvh]"} md:px-6 ${isDetached ? "md:pb-[1.5dvh]" : "md:pb-[3dvh]"} animate-[fadeIn_400ms_ease-out]`}
       >
         <div ref={morphRef} className="pointer-events-auto w-full" style={{ maxWidth: "min(calc(200px + (100% - 200px) * (1 - var(--lp, 0))), calc(200px + (42rem - 200px) * (1 - var(--lp, 0))))" } as React.CSSProperties}>
           {pinnedSubagent && (
