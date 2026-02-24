@@ -44,17 +44,24 @@ export function TurnstileGate({ siteKey, onVerified }: Props) {
       });
     };
 
-    const script = document.createElement("script");
-    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-    script.async = true;
-    script.defer = true;
-    script.onload = render;
-    document.head.appendChild(script);
+    const w = window as any;
+    let script: HTMLScriptElement | null = null;
+
+    if (w.turnstile) {
+      render();
+    } else {
+      script = document.createElement("script");
+      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      script.async = true;
+      script.defer = true;
+      script.onload = render;
+      document.head.appendChild(script);
+    }
 
     return () => {
-      const w = window as any;
       if (widgetId.current !== null) w.turnstile?.remove(widgetId.current);
-      document.head.removeChild(script);
+      widgetId.current = null;
+      if (script && document.head.contains(script)) document.head.removeChild(script);
     };
   }, [siteKey, onVerified]);
 
