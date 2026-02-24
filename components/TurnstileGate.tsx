@@ -12,6 +12,9 @@ export function TurnstileGate({ siteKey, onVerified }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const verifying = useRef(false);
   const widgetId = useRef<string | null>(null);
+  // Stable ref so the effect never re-runs due to parent re-renders
+  const onVerifiedRef = useRef(onVerified);
+  useEffect(() => { onVerifiedRef.current = onVerified; }, [onVerified]);
 
   useEffect(() => {
     const verify = async (cfToken: string) => {
@@ -25,7 +28,7 @@ export function TurnstileGate({ siteKey, onVerified }: Props) {
           body: JSON.stringify({ token: cfToken }),
         });
         if (!res.ok) throw new Error("Failed");
-        onVerified();
+        onVerifiedRef.current();
       } catch {
         setError(true);
         verifying.current = false;
@@ -63,7 +66,7 @@ export function TurnstileGate({ siteKey, onVerified }: Props) {
       widgetId.current = null;
       if (script && document.head.contains(script)) document.head.removeChild(script);
     };
-  }, [siteKey, onVerified]);
+  }, [siteKey]); // onVerified intentionally excluded — kept stable via ref
 
   return (
     <div
