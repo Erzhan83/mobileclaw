@@ -8,6 +8,8 @@ A mobile-first chat UI for [OpenClaw](https://github.com/openclaw/openclaw) and 
 
 **[Try the Live Demo](https://mobileclaw.vercel.app?demo)**
 
+**iOS App Soon™!**
+
 <br />
 
 <img src="docs/screenshots/hero-dark.png" alt="MobileClaw dark mode" width="280" />&nbsp;&nbsp;
@@ -114,10 +116,6 @@ Connection settings persist across page reloads via localStorage.
 - **TypeScript** — type-safe WebSocket protocol handling, enforced in build via `tsc`
 - **ESLint 9** — flat config with type-aware `typescript-eslint` rules
 - **Zero UI dependencies** — hand-rolled components with inline SVG icons
-
-## iOS App
-
-Soon™!
 
 ## License
 
