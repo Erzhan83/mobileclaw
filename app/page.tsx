@@ -496,7 +496,44 @@ export default function Home() {
 
   /** Handle chat.history response — parse, merge tool results, update state. */
   const handleHistoryResponse = useCallback((resPayload: Record<string, unknown>) => {
-    const rawMsgs = resPayload.messages as Array<Record<string, unknown>>;
+    const allRawMsgs = resPayload.messages as Array<Record<string, unknown>>;
+
+    // Filter out transient /commands exchanges persisted by the silent fetch.
+    // Mark user messages whose text is exactly "/commands" and the assistant response
+    // that immediately follows them — these are utility messages, not real conversation.
+    const skipIndices = new Set<number>();
+    for (let i = 0; i < allRawMsgs.length; i++) {
+      const m = allRawMsgs[i];
+      if (m.role !== "user") continue;
+      const c = m.content;
+      let text = "";
+      if (typeof c === "string") text = c;
+      else if (Array.isArray(c)) {
+        const tp = (c as ContentPart[]).find((p) => p.type === "text" && p.text);
+        if (tp?.text) text = tp.text;
+      }
+      if (text.trim() === "/commands") {
+        skipIndices.add(i);
+        // Also skip the next assistant message (the command list response)
+        if (i + 1 < allRawMsgs.length && allRawMsgs[i + 1].role === "assistant") {
+          skipIndices.add(i + 1);
+          // Extract commands from the response while we have it
+          const rc = allRawMsgs[i + 1].content;
+          const respText = typeof rc === "string" ? rc
+            : Array.isArray(rc) ? (rc as ContentPart[]).filter((p) => p.type === "text" && p.text).map((p) => p.text).join("") : "";
+          if (respText) {
+            const parsed = parseServerCommands(respText);
+            const coreNames = new Set(ALL_COMMANDS.map(cmd => cmd.name));
+            const extra = parsed.filter(cmd => !coreNames.has(cmd.name));
+            if (extra.length > 0) {
+              setServerCommands(extra);
+              try { localStorage.setItem("mc-server-commands", JSON.stringify(extra)); } catch {}
+            }
+          }
+        }
+      }
+    }
+    const rawMsgs = allRawMsgs.filter((_, i) => !skipIndices.has(i));
 
     const historyMessages = rawMsgs
       .filter((m) => {
@@ -608,24 +645,7 @@ export default function Home() {
       }
     }
 
-    // Filter out transient /commands exchanges (from silent server-command fetch)
-    const commandsIds = new Set<string>();
-    for (let i = 0; i < historyMessages.length; i++) {
-      const hm = historyMessages[i];
-      if (hm.role === "user") {
-        const text = getTextFromContent(hm.content).trim();
-        if (text === "/commands") {
-          if (hm.id) commandsIds.add(hm.id);
-          // Also remove the assistant response that immediately follows
-          if (i + 1 < historyMessages.length && historyMessages[i + 1].role === "assistant") {
-            const next = historyMessages[i + 1];
-            if (next.id) commandsIds.add(next.id);
-          }
-        }
-      }
-    }
-
-    const finalMessages = historyMessages.filter((m) => (!m.id || !mergedIds.has(m.id)) && !commandsIds.has(m.id!));
+    const finalMessages = historyMessages.filter((m) => !m.id || !mergedIds.has(m.id));
 
     // Extract model from history
     const lastAssistantRaw = rawMsgs.filter((m) => m.role === "assistant" && m.model).pop();
