@@ -431,11 +431,11 @@ export const ChatInput = forwardRef<ChatInputHandle, {
                     <span className="truncate text-sm font-medium text-foreground">
                       {model.label}
                     </span>
-                    <span className="truncate text-[11px] text-muted-foreground">
+                    <span className="truncate text-xs text-muted-foreground">
                       {model.description}
                     </span>
                   </div>
-                  <span className="shrink-0 rounded bg-secondary/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                  <span className="shrink-0 rounded bg-secondary/50 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
                     {model.id}
                   </span>
                 </button>

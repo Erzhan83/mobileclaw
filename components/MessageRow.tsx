@@ -35,7 +35,7 @@ function FileThumbnails({ files }: { files: ContentPart[] }) {
           >
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-foreground/15">
               {ext ? (
-                <span className="text-[10px] font-bold leading-none text-primary-foreground/80">{ext.slice(0, 4)}</span>
+                <span className="text-2xs font-bold leading-none text-primary-foreground/80">{ext.slice(0, 4)}</span>
               ) : (
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary-foreground/70">
                   <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" />
@@ -313,7 +313,7 @@ function ThinkingPill({ text }: { text: string }) {
           {!isEmpty && sentence && !expanded && (
             <div className="mt-1 max-w-[300px] overflow-hidden text-left">
               <div
-                className="text-[11px] leading-tight text-muted-foreground/40 truncate font-normal transition-opacity duration-200"
+                className="text-xs leading-tight text-muted-foreground/40 truncate font-normal transition-opacity duration-200"
                 style={{ opacity: visible ? 1 : 0 }}
               >
                 {sentence}

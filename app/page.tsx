@@ -1794,11 +1794,11 @@ export default function Home() {
                 <React.Fragment key={msg.id || idx}>
                   {isTimeGap && !isNewTurn && msg.timestamp && (
                     <div className="flex justify-center py-1">
-                      <span className="text-[10px] text-muted-foreground/60">{formatMessageTime(msg.timestamp)}</span>
+                      <span className="text-2xs text-muted-foreground/60">{formatMessageTime(msg.timestamp)}</span>
                     </div>
                   )}
                   {showTimestamp && isNewTurn && msg.timestamp && (
-                    <p className={`text-[10px] text-muted-foreground/60 ${side === "right" ? "text-right" : "text-left"}`}>
+                    <p className={`text-2xs text-muted-foreground/60 ${side === "right" ? "text-right" : "text-left"}`}>
                       {formatMessageTime(msg.timestamp)}
                       {msg.role === "assistant" && msg.runDuration && msg.runDuration > 0 && (
                         <span className="ml-1">&middot; Worked for {msg.runDuration}s</span>
