@@ -1772,8 +1772,8 @@ export default function Home() {
       )}
 
       <div ref={pullContentRef} className={`relative flex flex-1 flex-col min-h-0 ${isDetached ? "px-3 pt-3" : ""}`}>
-        <div className={`pointer-events-none absolute z-20 h-7 opacity-60 ${isDetached ? "inset-x-3 top-3 rounded-t-2xl" : "inset-x-0 top-[60px]"}`} style={{ background: "linear-gradient(to bottom, #FAFAFA 40%, transparent)" }} />
-        <div className={`pointer-events-none absolute z-20 h-7 opacity-60 ${isDetached ? "inset-x-3 rounded-b-2xl" : "inset-x-0"}`} style={{ bottom: isDetached ? inputZoneHeight : 0, background: "linear-gradient(to top, #FAFAFA 40%, transparent)" }} />
+        <div className={`pointer-events-none absolute z-20 h-7 opacity-60 ${isDetached ? "inset-x-3 top-3 rounded-t-2xl" : "inset-x-0 top-[60px]"}`} style={{ background: "linear-gradient(to bottom, var(--background) 40%, transparent)" }} />
+        <div className={`pointer-events-none absolute z-20 h-7 opacity-60 ${isDetached ? "inset-x-3 rounded-b-2xl" : "inset-x-0"}`} style={{ bottom: isDetached ? inputZoneHeight : 0, background: "linear-gradient(to top, var(--background) 40%, transparent)" }} />
         <main
           ref={scrollRef}
           onScroll={handleScroll}
