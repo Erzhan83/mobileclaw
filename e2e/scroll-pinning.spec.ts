@@ -99,4 +99,34 @@ test.describe("Scroll Pinning", () => {
 
         expect(pillOpacity, "Scroll-to-bottom pill should be hidden").toBeLessThan(0.1);
     });
+
+    test("strong manual scroll-up during streaming disables forced autoscroll", async ({ page }) => {
+        await page.goto("/?demo");
+        await expect(page.getByPlaceholder("Send a message...")).toBeVisible({ timeout: 15_000 });
+
+        await sendChatMessage(page, "long");
+        await expect(page.getByPlaceholder("Queue a message...")).toBeVisible({ timeout: 20_000 });
+
+        await page.waitForFunction(() => {
+            const el = document.querySelector("main");
+            return !!el && el.scrollHeight - el.clientHeight > 300;
+        }, { timeout: 20_000 });
+
+        await page.evaluate(() => {
+            const el = document.querySelector("main");
+            if (!el) return;
+            for (let i = 0; i < 6; i++) {
+                el.dispatchEvent(new WheelEvent("wheel", { deltaY: -20, bubbles: true, cancelable: true }));
+            }
+            el.scrollTop = Math.max(0, el.scrollTop - 260);
+        });
+
+        await page.waitForTimeout(300);
+        const distAfterManualScroll = await getDistFromBottom(page);
+        expect(distAfterManualScroll, `Expected to be away from bottom after manual scroll, got ${distAfterManualScroll}px`).toBeGreaterThan(120);
+
+        await page.waitForTimeout(1500);
+        const distAfterMoreStreaming = await getDistFromBottom(page);
+        expect(distAfterMoreStreaming, `Expected autoscroll to stay disabled while streaming, got ${distAfterMoreStreaming}px`).toBeGreaterThan(100);
+    });
 });

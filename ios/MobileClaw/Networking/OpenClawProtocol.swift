@@ -2,6 +2,11 @@ import Foundation
 
 @MainActor
 final class OpenClawProtocol {
+    private enum TextStreamSource {
+        case chat
+        case agent
+    }
+
     let bridge: WebViewBridge
     let appState: AppState
     var sendMessage: ((String) -> Void)?
@@ -11,6 +16,7 @@ final class OpenClawProtocol {
     private var activeRunId: String?
     private var sessionKey: String = "main"
     private var pendingHistoryJSON: String?
+    private var textSourceByRunId: [String: TextStreamSource] = [:]
 
     init(bridge: WebViewBridge, appState: AppState) {
         self.bridge = bridge
@@ -126,7 +132,8 @@ final class OpenClawProtocol {
     private func handleResponse(_ json: [String: Any]) {
         let ok = json["ok"] as? Bool ?? false
         let id = json["id"] as? String ?? ""
-        let payload = json["payload"] as? [String: Any]
+        let payloadAny = json["payload"]
+        let payload = payloadAny as? [String: Any]
 
         // hello-ok
         if ok, let p = payload, p["type"] as? String == "hello-ok" {
@@ -138,6 +145,15 @@ final class OpenClawProtocol {
         // chat.history response
         if ok, id.hasPrefix("history-"), let p = payload, p["messages"] != nil {
             handleHistoryResponse(p)
+            return
+        }
+
+        // sessions.list response
+        if id.hasPrefix("sessions-list-") {
+            appState.sessionsLoading = false
+            if ok {
+                handleSessionsListResponse(payloadAny)
+            }
             return
         }
 
@@ -158,10 +174,12 @@ final class OpenClawProtocol {
 
     private func handleHelloOk(_ payload: [String: Any]) {
         let snapshot = payload["snapshot"] as? [String: Any]
-        let sessionDefaults = snapshot?["sessionDefaults"] as? [String: String]
-        sessionKey = sessionDefaults?["mainSessionKey"] ?? sessionDefaults?["mainKey"] ?? "main"
+        let sessionDefaults = snapshot?["sessionDefaults"] as? [String: Any]
+        sessionKey = (sessionDefaults?["mainSessionKey"] as? String) ?? (sessionDefaults?["mainKey"] as? String) ?? "main"
         appState.sessionKey = sessionKey
+        appState.sessionSwitching = false
         requestHistory()
+        requestSessionsList()
     }
 
     private func handleHistoryResponse(_ payload: [String: Any]) {
@@ -215,6 +233,47 @@ final class OpenClawProtocol {
         } else {
             print("[Protocol] WebView not ready, queuing history (\(rawMessages.count) messages)")
             pendingHistoryJSON = json
+        }
+
+        appState.sessionSwitching = false
+    }
+
+    private func handleSessionsListResponse(_ payload: Any?) {
+        let rawSessionsAny: Any?
+        if let payload = payload as? [String: Any] {
+            rawSessionsAny = payload["sessions"] ?? payload["items"] ?? payload["list"]
+        } else {
+            rawSessionsAny = payload
+        }
+        guard let rawSessions = rawSessionsAny as? [[String: Any]] else { return }
+
+        var parsed = rawSessions.compactMap(parseSessionInfo)
+        parsed.sort { $0.updatedAt > $1.updatedAt }
+
+        // Keep the currently selected session visible even if server omits it.
+        if !parsed.contains(where: { $0.key == sessionKey }) {
+            parsed.insert(
+                SessionInfo(
+                    key: sessionKey,
+                    kind: sessionKey == "main" ? .main : .other,
+                    channel: "",
+                    displayName: nil,
+                    updatedAt: Int(Date().timeIntervalSince1970 * 1000),
+                    sessionId: nil,
+                    model: nil,
+                    contextTokens: nil,
+                    totalTokens: nil
+                ),
+                at: 0
+            )
+        }
+
+        appState.sessions = parsed
+
+        if let selected = parsed.first(where: { $0.key == sessionKey }),
+           let model = selected.model,
+           !model.isEmpty {
+            appState.currentModel = model
         }
     }
 
@@ -270,6 +329,14 @@ final class OpenClawProtocol {
                 appState.isRunActive = true
                 activeRunId = runId
 
+                // Pick one authoritative source per run to avoid duplicate prefixes.
+                if textSourceByRunId[runId] == .agent {
+                    return
+                }
+                if textSourceByRunId[runId] == nil {
+                    textSourceByRunId[runId] = .chat
+                }
+
                 if let text = extractText(from: content) {
                     bridge.send(.streamContentDelta(runId: runId, delta: text, ts: ts))
                 }
@@ -283,6 +350,7 @@ final class OpenClawProtocol {
             appState.isStreaming = false
             bridge.send(.streamEnd)
             activeRunId = nil
+            textSourceByRunId.removeValue(forKey: runId)
 
             if let queued = appState.queuedMessage {
                 appState.queuedMessage = nil
@@ -298,6 +366,7 @@ final class OpenClawProtocol {
             appState.isStreaming = false
             bridge.send(.streamEnd)
             activeRunId = nil
+            textSourceByRunId.removeValue(forKey: runId)
 
         case "error":
             let errorMsg = payload["errorMessage"] as? String ?? "Chat error"
@@ -305,6 +374,7 @@ final class OpenClawProtocol {
             appState.isStreaming = false
             bridge.send(.streamError(errorMessage: errorMsg))
             activeRunId = nil
+            textSourceByRunId.removeValue(forKey: runId)
 
         default:
             break
@@ -334,12 +404,24 @@ final class OpenClawProtocol {
             }
 
         case "content":
+            if textSourceByRunId[runId] == .chat {
+                return
+            }
+            if textSourceByRunId[runId] == nil {
+                textSourceByRunId[runId] = .agent
+            }
             let delta = (data["delta"] ?? data["text"] ?? data["content"]) as? String ?? ""
             if !delta.isEmpty {
                 bridge.send(.streamContentDelta(runId: runId, delta: delta, ts: ts))
             }
 
         case "reasoning":
+            if textSourceByRunId[runId] == .chat {
+                return
+            }
+            if textSourceByRunId[runId] == nil {
+                textSourceByRunId[runId] = .agent
+            }
             let delta = (data["delta"] ?? data["text"] ?? data["content"]) as? String ?? ""
             if !delta.isEmpty {
                 bridge.send(.streamReasoningDelta(runId: runId, delta: delta, ts: ts))
@@ -387,6 +469,7 @@ final class OpenClawProtocol {
     func sendChatMessage(text: String) {
         let runId = "run-\(Int(Date().timeIntervalSince1970 * 1000))-\(randomHex(4))"
         activeRunId = runId
+        textSourceByRunId.removeValue(forKey: runId)
         appState.isRunActive = true
         appState.isStreaming = true
         bridge.send(.thinkingShow)
@@ -428,6 +511,45 @@ final class OpenClawProtocol {
         send(req)
     }
 
+    func requestSessionsList(limit: Int = 50) {
+        appState.sessionsLoading = true
+        let req: [String: Any] = [
+            "type": "req",
+            "id": "sessions-list-\(Int(Date().timeIntervalSince1970 * 1000))",
+            "method": "sessions.list",
+            "params": ["limit": limit],
+        ]
+        send(req)
+    }
+
+    func switchSession(to key: String) {
+        guard !key.isEmpty else { return }
+
+        if key == sessionKey {
+            requestHistory()
+            return
+        }
+
+        sessionKey = key
+        appState.sessionKey = key
+        appState.sessionSwitching = true
+
+        activeRunId = nil
+        appState.isRunActive = false
+        appState.isStreaming = false
+        bridge.send(.streamEnd)
+        bridge.send(.subagentClear)
+
+        if let selected = appState.sessions.first(where: { $0.key == key }),
+           let model = selected.model,
+           !model.isEmpty {
+            appState.currentModel = model
+        }
+
+        requestHistory()
+        requestSessionsList()
+    }
+
     // MARK: - Helpers
 
     private func send(_ dict: [String: Any]) {
@@ -438,6 +560,46 @@ final class OpenClawProtocol {
 
     private func extractUserText(_ msg: [String: Any]) -> String {
         extractText(from: msg["content"]) ?? ""
+    }
+
+    private func parseSessionInfo(_ raw: [String: Any]) -> SessionInfo? {
+        guard let key = raw["key"] as? String, !key.isEmpty else { return nil }
+
+        let kind = SessionKind(rawValueOrFallback: raw["kind"] as? String)
+        let channel = raw["channel"] as? String ?? ""
+        let displayName = raw["displayName"] as? String
+        let updatedAt = toEpochMilliseconds(raw["updatedAt"])
+        let sessionId = raw["sessionId"] as? String
+        let model = raw["model"] as? String
+        let contextTokens = toInt(raw["contextTokens"])
+        let totalTokens = toInt(raw["totalTokens"])
+
+        return SessionInfo(
+            key: key,
+            kind: kind,
+            channel: channel,
+            displayName: displayName,
+            updatedAt: updatedAt,
+            sessionId: sessionId,
+            model: model,
+            contextTokens: contextTokens,
+            totalTokens: totalTokens
+        )
+    }
+
+    private func toInt(_ any: Any?) -> Int? {
+        if let value = any as? Int { return value }
+        if let value = any as? Double { return Int(value) }
+        if let value = any as? NSNumber { return value.intValue }
+        if let value = any as? String { return Int(value) }
+        return nil
+    }
+
+    private func toEpochMilliseconds(_ any: Any?) -> Int {
+        guard let raw = toInt(any) else { return 0 }
+        // Treat second-based values as unix seconds.
+        if raw > 0 && raw < 10_000_000_000 { return raw * 1000 }
+        return raw
     }
 
     private func extractText(from content: Any?) -> String? {

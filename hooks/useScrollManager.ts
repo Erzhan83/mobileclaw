@@ -4,6 +4,10 @@ import type { Message } from "@/types/chat";
 /** After pinning, ignore scroll-based unpin checks for this long (ms).
  *  Prevents layout reflows from immediately unpinning after send. */
 export const PIN_LOCK_MS = 500;
+const STREAM_UNPIN_DISTANCE_PX = 100;
+const STREAM_WHEEL_UNPIN_DELTA_PX = 20;
+const STREAM_TOUCH_UNPIN_DELTA_PX = 18;
+const STREAM_REPIN_DISTANCE_PX = 32;
 
 /**
  * Manages scroll tracking, auto-scroll pinning, morph bar animation,
@@ -41,24 +45,48 @@ export function useScrollManager(
   // a short window so the final content snap doesn't get stranded above the fold.
   const scrollGraceRef = useRef(false);
   const scrollGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Sticky manual-unpin mode: once user strongly scrolls up during streaming,
+  // keep auto-scroll off until they intentionally return to bottom.
+  const manualStreamUnpinRef = useRef(false);
+  const wheelUpIntentRef = useRef(0);
+
+  const clearManualStreamUnpin = useCallback(() => {
+    manualStreamUnpinRef.current = false;
+    wheelUpIntentRef.current = 0;
+  }, []);
+
+  const disengageStreamingAutoscroll = useCallback(() => {
+    pinnedToBottomRef.current = false;
+    manualStreamUnpinRef.current = true;
+    wheelUpIntentRef.current = 0;
+    scrollGraceRef.current = false;
+    if (scrollGraceTimerRef.current) {
+      clearTimeout(scrollGraceTimerRef.current);
+      scrollGraceTimerRef.current = null;
+    }
+  }, []);
 
   /** Activate/deactivate grace period based on streaming transitions. */
   const updateGraceForStreamingChange = useCallback((wasStreaming: boolean, nowStreaming: boolean) => {
-    if (wasStreaming && !nowStreaming && pinnedToBottomRef.current) {
-      scrollGraceRef.current = true;
-      if (scrollGraceTimerRef.current) clearTimeout(scrollGraceTimerRef.current);
-      scrollGraceTimerRef.current = setTimeout(() => {
-        scrollGraceRef.current = false;
-        scrollGraceTimerRef.current = null;
-      }, 500);
+    if (wasStreaming && !nowStreaming) {
+      clearManualStreamUnpin();
+      if (pinnedToBottomRef.current) {
+        scrollGraceRef.current = true;
+        if (scrollGraceTimerRef.current) clearTimeout(scrollGraceTimerRef.current);
+        scrollGraceTimerRef.current = setTimeout(() => {
+          scrollGraceRef.current = false;
+          scrollGraceTimerRef.current = null;
+        }, 500);
+      }
     } else if (nowStreaming) {
+      wheelUpIntentRef.current = 0;
       scrollGraceRef.current = false;
       if (scrollGraceTimerRef.current) {
         clearTimeout(scrollGraceTimerRef.current);
         scrollGraceTimerRef.current = null;
       }
     }
-  }, []);
+  }, [clearManualStreamUnpin]);
 
   // Un-suppress morph after initial render settles
   useEffect(() => {
@@ -155,9 +183,11 @@ export function useScrollManager(
       // the user scrolls back near the bottom during streaming.
       if (!isStreamingRef.current && !scrollGraceRef.current && Date.now() > pinLockUntilRef.current) {
         pinnedToBottomRef.current = distanceFromBottom < 80;
-      } else if (isStreamingRef.current && !pinnedToBottomRef.current && distanceFromBottom < 80) {
+        if (pinnedToBottomRef.current) clearManualStreamUnpin();
+      } else if (isStreamingRef.current && !manualStreamUnpinRef.current && !pinnedToBottomRef.current && distanceFromBottom < 80) {
         pinnedToBottomRef.current = true;
         pinLockUntilRef.current = Date.now() + PIN_LOCK_MS;
+        clearManualStreamUnpin();
       }
 
       // When streaming and pinned, lock morph to input mode (--sp = 0)
@@ -170,7 +200,7 @@ export function useScrollManager(
       const progress = Math.min(Math.max(distanceFromBottom / range, 0), 1);
       setMorphTarget(progress);
     });
-  }, [isStreamingRef, setMorphTarget]);
+  }, [clearManualStreamUnpin, isStreamingRef, setMorphTarget]);
 
   /** Clear any stuck bounce transform on the content div. */
   const clearBounceTransform = useCallback(() => {
@@ -189,6 +219,7 @@ export function useScrollManager(
   const scrollToBottom = useCallback(() => {
     pinnedToBottomRef.current = true;
     pinLockUntilRef.current = Date.now() + PIN_LOCK_MS;
+    clearManualStreamUnpin();
     clearBounceTransform();
     const el = scrollRef.current;
     if (!el) return;
@@ -232,7 +263,7 @@ export function useScrollManager(
     };
 
     requestAnimationFrame(animate);
-  }, [clearBounceTransform, isStreamingRef]);
+  }, [clearBounceTransform, clearManualStreamUnpin, isStreamingRef]);
 
   // Auto-scroll: whenever messages change, snap to bottom if pinned.
   useLayoutEffect(() => {
@@ -402,14 +433,22 @@ export function useScrollManager(
 
     // ── Existing scroll/unpin logic ──────────────────────────────────
     const onTouchEnd = () => {
-      if (isStreamingRef.current) {
+      if (isStreamingRef.current && !manualStreamUnpinRef.current) {
         const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
         if (dist < 80) pinnedToBottomRef.current = true;
       }
     };
     const onWheel = (e: WheelEvent) => {
-      if (e.deltaY < 0 && isStreamingRef.current) {
-        pinnedToBottomRef.current = false;
+      if (isStreamingRef.current && pinnedToBottomRef.current) {
+        if (e.deltaY < 0) {
+          wheelUpIntentRef.current += Math.abs(e.deltaY);
+          const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+          if (dist > STREAM_UNPIN_DISTANCE_PX || wheelUpIntentRef.current >= STREAM_WHEEL_UNPIN_DELTA_PX) {
+            disengageStreamingAutoscroll();
+          }
+        } else if (e.deltaY > 0) {
+          wheelUpIntentRef.current = 0;
+        }
       }
       // Bounce on wheel scroll past bottom (skipped in native)
       if (!native && e.deltaY > 0 && isAtBottom()) {
@@ -479,15 +518,21 @@ export function useScrollManager(
       // ── Unpin during streaming if user scrolls up ──
       if (isStreamingRef.current && currentScrollTop < lastScrollTop - 3) {
         const dist = el.scrollHeight - currentScrollTop - el.clientHeight;
-        if (dist > 150) {
-          pinnedToBottomRef.current = false;
+        if (dist > STREAM_UNPIN_DISTANCE_PX) {
+          disengageStreamingAutoscroll();
         }
       }
       // ── Re-pin during streaming/grace if user scrolls near bottom ──
       if ((isStreamingRef.current || scrollGraceRef.current) && !pinnedToBottomRef.current) {
         const dist = el.scrollHeight - currentScrollTop - el.clientHeight;
-        if (dist < 80) {
+        const scrollingDown = currentScrollTop > lastScrollTop + 1;
+        const canRepin = !manualStreamUnpinRef.current
+          ? dist < 80
+          : scrollingDown && dist < STREAM_REPIN_DISTANCE_PX;
+        if (canRepin) {
           pinnedToBottomRef.current = true;
+          pinLockUntilRef.current = Date.now() + PIN_LOCK_MS;
+          clearManualStreamUnpin();
         }
       }
       lastScrollTop = currentScrollTop;
@@ -500,8 +545,8 @@ export function useScrollManager(
       // Unpin when user swipes up during streaming (finger moves down → clientY increases)
       if (isStreamingRef.current && pinnedToBottomRef.current) {
         const dy = e.touches[0].clientY - touchStartY;
-        if (dy > 15) {
-          pinnedToBottomRef.current = false;
+        if (dy > STREAM_TOUCH_UNPIN_DELTA_PX) {
+          disengageStreamingAutoscroll();
         }
       }
     };
@@ -527,7 +572,7 @@ export function useScrollManager(
       const content = el.firstElementChild as HTMLElement | null;
       if (content) { content.style.transition = ""; content.style.transform = ""; }
     };
-  }, [isStreamingRef]);
+  }, [clearManualStreamUnpin, disengageStreamingAutoscroll, isNativeRef, isStreamingRef]);
 
   return {
     scrollRef,
