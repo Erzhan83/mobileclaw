@@ -1,6 +1,10 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import type { Message } from "@/types/chat";
 
+/** After pinning, ignore scroll-based unpin checks for this long (ms).
+ *  Prevents layout reflows from immediately unpinning after send. */
+export const PIN_LOCK_MS = 500;
+
 /**
  * Manages scroll tracking, auto-scroll pinning, morph bar animation,
  * and ResizeObserver-based content tracking.
@@ -8,6 +12,7 @@ import type { Message } from "@/types/chat";
 export function useScrollManager(
   messages: Message[],
   isStreamingRef: React.RefObject<boolean>,
+  isNativeRef?: React.RefObject<boolean>,
 ) {
   const [scrollPhase, setScrollPhase] = useState<"input" | "pill">("input");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -16,6 +21,7 @@ export function useScrollManager(
   const scrollRafId = useRef<number | null>(null);
   const scrollPhaseRef = useRef<"input" | "pill">("input");
   const pinnedToBottomRef = useRef(true);
+  const pinLockUntilRef = useRef(0); // timestamp — don't unpin until after this
   const hasScrolledInitialRef = useRef(false);
 
   // Suppress morph during initial page load: expanding thinking blocks
@@ -144,12 +150,14 @@ export function useScrollManager(
 
       const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
 
-      // During streaming: allow re-pinning when user scrolls near bottom,
-      // but don't auto-unpin (the wheel/touch handlers handle explicit unpinning).
-      if (!isStreamingRef.current && !scrollGraceRef.current) {
+      // During streaming or pin-lock window, don't unpin from scroll position —
+      // only the wheel/touch handlers can unpin. But DO allow re-pinning when
+      // the user scrolls back near the bottom during streaming.
+      if (!isStreamingRef.current && !scrollGraceRef.current && Date.now() > pinLockUntilRef.current) {
         pinnedToBottomRef.current = distanceFromBottom < 80;
-      } else if (!pinnedToBottomRef.current && distanceFromBottom < 80) {
+      } else if (isStreamingRef.current && !pinnedToBottomRef.current && distanceFromBottom < 80) {
         pinnedToBottomRef.current = true;
+        pinLockUntilRef.current = Date.now() + PIN_LOCK_MS;
       }
 
       // When streaming and pinned, lock morph to input mode (--sp = 0)
@@ -164,11 +172,24 @@ export function useScrollManager(
     });
   }, [isStreamingRef, setMorphTarget]);
 
+  /** Clear any stuck bounce transform on the content div. */
+  const clearBounceTransform = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const content = el.firstElementChild as HTMLElement | null;
+    if (content && content.style.transform) {
+      content.style.transition = "";
+      content.style.transform = "";
+    }
+  }, []);
+
   // Flag to prevent ResizeObserver from snapping scrollTop mid-animation
   const isAnimatingScrollRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
     pinnedToBottomRef.current = true;
+    pinLockUntilRef.current = Date.now() + PIN_LOCK_MS;
+    clearBounceTransform();
     const el = scrollRef.current;
     if (!el) return;
 
@@ -211,7 +232,7 @@ export function useScrollManager(
     };
 
     requestAnimationFrame(animate);
-  }, [isStreamingRef]);
+  }, [clearBounceTransform, isStreamingRef]);
 
   // Auto-scroll: whenever messages change, snap to bottom if pinned.
   useLayoutEffect(() => {
@@ -221,8 +242,9 @@ export function useScrollManager(
     if (!hasScrolledInitialRef.current) {
       hasScrolledInitialRef.current = true;
     }
+    clearBounceTransform();
     el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, [messages, clearBounceTransform]);
 
   // ResizeObserver: catch content-height changes when NOT streaming (e.g. images loading).
   useEffect(() => {
@@ -319,8 +341,15 @@ export function useScrollManager(
 
     const isAtBottom = () => el.scrollHeight - el.scrollTop - el.clientHeight < 2;
 
-    // ── Touch bounce ─────────────────────────────────────────────────
+    // ── Touch tracking ────────────────────────────────────────────────
+    let touchStartY = 0; // always captured, for unpin detection
+
+    // ── Touch bounce (skipped in native — WebKit handles rubber-band) ──
+    const native = !!isNativeRef?.current;
+
     const onBounceStart = (e: TouchEvent) => {
+      touchStartY = e.touches[0].clientY;
+      if (native) return;
       if (isAtBottom()) {
         bounceTouchStartY = e.touches[0].clientY;
         const content = el.firstElementChild as HTMLElement | null;
@@ -332,6 +361,7 @@ export function useScrollManager(
     };
 
     const onBounceMove = (e: TouchEvent) => {
+      if (native) return;
       if (!isAtBottom() && !isBouncing) return;
       const dy = bounceTouchStartY - e.touches[0].clientY;
       if (dy > 0 && isAtBottom()) {
@@ -381,8 +411,8 @@ export function useScrollManager(
       if (e.deltaY < 0 && isStreamingRef.current) {
         pinnedToBottomRef.current = false;
       }
-      // Bounce on wheel scroll past bottom
-      if (e.deltaY > 0 && isAtBottom()) {
+      // Bounce on wheel scroll past bottom (skipped in native)
+      if (!native && e.deltaY > 0 && isAtBottom()) {
         isBouncing = true;
         wheelAccum += e.deltaY;
         wheelAccum = Math.min(wheelAccum, 400);
@@ -403,8 +433,9 @@ export function useScrollManager(
       const velocity = dt > 0 && dt < 200 ? (currentScrollTop - prevScrollTop) / dt : 0;
       const atBottom = isAtBottom();
 
-      if (atBottom && !wasAtBottomLast && velocity > 0.3 && !isBouncing && !isAnimatingScrollRef.current && !morphSuppressedRef.current && !isStreamingRef.current) {
+      if (atBottom && !wasAtBottomLast && velocity > 0.3 && !isBouncing && Date.now() > pinLockUntilRef.current && !isStreamingRef.current && !isNativeRef?.current && !isAnimatingScrollRef.current && !morphSuppressedRef.current) {
         // Arrived at bottom with momentum — smooth rAF-driven bounce
+        // Scale velocity to a generous displacement matching pull-to-refresh feel
         const raw = Math.min(velocity * 150, 120);
         const peak = -rubberBand(raw);
         isBouncing = true;
@@ -464,7 +495,16 @@ export function useScrollManager(
 
     // Combine bounce + unpin touch handlers
     const onCombinedTouchStart = (e: TouchEvent) => onBounceStart(e);
-    const onCombinedTouchMove = (e: TouchEvent) => onBounceMove(e);
+    const onCombinedTouchMove = (e: TouchEvent) => {
+      onBounceMove(e);
+      // Unpin when user swipes up during streaming (finger moves down → clientY increases)
+      if (isStreamingRef.current && pinnedToBottomRef.current) {
+        const dy = e.touches[0].clientY - touchStartY;
+        if (dy > 15) {
+          pinnedToBottomRef.current = false;
+        }
+      }
+    };
     const onCombinedTouchEnd = () => { onBounceEnd(); onTouchEnd(); };
 
     el.addEventListener("touchstart", onCombinedTouchStart, { passive: true });
@@ -483,6 +523,9 @@ export function useScrollManager(
       if (bounceRafId) cancelAnimationFrame(bounceRafId);
       if (wheelDecayRaf) cancelAnimationFrame(wheelDecayRaf);
       if (momentumTimer) clearTimeout(momentumTimer);
+      // Clear any stuck bounce transform
+      const content = el.firstElementChild as HTMLElement | null;
+      if (content) { content.style.transition = ""; content.style.transform = ""; }
     };
   }, [isStreamingRef]);
 
@@ -492,6 +535,7 @@ export function useScrollManager(
     morphRef,
     scrollPhase,
     pinnedToBottomRef,
+    pinLockUntilRef,
     scrollGraceRef,
     handleScroll,
     scrollToBottom,

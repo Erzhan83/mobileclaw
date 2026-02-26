@@ -17,4 +17,18 @@ playwright-report/
 blob-report/
 logs.jsonl
 .vercel
+
+
+# Xcode
+ios/MobileClaw.xcodeproj/xcuserdata/
+ios/MobileClaw.xcodeproj/project.xcworkspace/xcuserdata/
+ios/build/
+*.xcuserstate
+
+# Next.js static export
+out/
+ios/MobileClaw/Resources/web/
+
+# Claude worktrees
+.claude/worktrees/
 worktrees

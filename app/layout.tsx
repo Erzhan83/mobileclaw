@@ -38,7 +38,10 @@ const headScript = `
       document.documentElement.classList.add('dark');
     }
   } catch (e) {}
-  if ('serviceWorker' in navigator && location.hostname !== 'localhost') {
+  if (location.search.indexOf('native') !== -1 || window.__nativeMode) {
+    document.documentElement.classList.add('native-loading');
+  }
+  if ('serviceWorker' in navigator && location.hostname !== 'localhost' && !window.__nativeMode) {
     window.addEventListener('load', function() {
       navigator.serviceWorker.register('/sw.js');
     });

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import type { ContentPart, Message } from "@/types/chat";
 import { getTextFromContent, getImages, getFiles } from "@/lib/messageUtils";
 import { HEARTBEAT_MARKER, NO_REPLY_MARKER, SYSTEM_PREFIX, SYSTEM_MESSAGE_PREFIX, STOP_REASON_INJECTED, isToolCallPart, SPAWN_TOOL_NAME, hasUnquotedMarker, hasHeartbeatOnOwnLine } from "@/lib/constants";
@@ -12,6 +12,7 @@ import { ToolCallPill } from "@/components/ToolCallPill";
 import { ImageThumbnails } from "@/components/ImageThumbnails";
 import { SmoothGrow } from "@/components/SmoothGrow";
 import type { SubagentStore } from "@/hooks/useSubagentStore";
+import { isNativeMode, postLinkTap, postImageTap } from "@/lib/nativeBridge";
 
 // ── File Thumbnails ──────────────────────────────────────────────────────────
 
@@ -180,7 +181,7 @@ function InjectedPill({ text, message, subagentStore }: { text: string; message?
                     {message?.reasoning && !hasThinkingParts && <ThinkingPill text={message.reasoning} />}
                     {parts?.map((part, i) => {
                       if (part.type === "thinking") {
-                        return <ThinkingPill key={`thinking-${i}`} text={part.text || ""} />;
+                        return <ThinkingPill key={`thinking-${i}`} text={part.thinking || part.text || ""} />;
                       }
                       if (isToolCallPart(part)) {
                         return <ToolCallPill key={`${part.name}-${i}`} name={part.name || "tool"} args={typeof part.arguments === "string" ? part.arguments : part.arguments ? JSON.stringify(part.arguments) : undefined} status={part.status} result={part.result} resultError={part.resultError} toolCallId={part.toolCallId} subagentStore={part.name === SPAWN_TOOL_NAME ? subagentStore : undefined} />;
@@ -418,9 +419,51 @@ function ContextPill({ summary, iconEl, text }: { summary: string; iconEl: React
   );
 }
 
+// ── Native mode click interceptor ──────────────────────────────────────────
+
+/** In native mode, intercept link clicks and image taps to route to Swift. */
+function useNativeClickInterceptor(containerRef: React.RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    if (!isNativeMode()) return;
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handler = (e: MouseEvent) => {
+      let target = e.target as HTMLElement | null;
+      while (target && target !== el) {
+        if (target.tagName === "A") {
+          const href = (target as HTMLAnchorElement).href;
+          if (href && !href.startsWith("javascript:")) {
+            e.preventDefault();
+            e.stopPropagation();
+            postLinkTap(href);
+            return;
+          }
+        }
+        if (target.tagName === "IMG") {
+          const src = (target as HTMLImageElement).src;
+          if (src) {
+            e.preventDefault();
+            e.stopPropagation();
+            postImageTap(src);
+            return;
+          }
+        }
+        target = target.parentElement;
+      }
+    };
+
+    el.addEventListener("click", handler, true);
+    return () => el.removeEventListener("click", handler, true);
+  }, [containerRef]);
+}
+
 // ── MessageRow ───────────────────────────────────────────────────────────────
 
 export function MessageRow({ message, isStreaming, subagentStore, pinnedToolCallId, onPin, onUnpin }: { message: Message; isStreaming: boolean; subagentStore?: SubagentStore; pinnedToolCallId?: string | null; onPin?: (info: { toolCallId: string | null; childSessionKey: string | null; taskName: string; model: string | null }) => void; onUnpin?: () => void }) {
+  const messageRef = useRef<HTMLDivElement>(null);
+  useNativeClickInterceptor(messageRef);
+
   const text = getTextFromContent(message.content);
   const images = getImages(message.content);
   const files = getFiles(message.content);
@@ -535,7 +578,7 @@ export function MessageRow({ message, isStreaming, subagentStore, pinnedToolCall
     && (message.content).some((p) => isToolCallPart(p) && p.name === SPAWN_TOOL_NAME);
 
   return (
-    <div data-message-role={message.role} className={`flex gap-3 ${isUser ? "flex-row-reverse" : ""}`}>
+    <div ref={messageRef} data-message-role={message.role} className={`flex gap-3 ${isUser ? "flex-row-reverse" : ""}`}>
       <div className={`max-w-[85%] md:max-w-[75%] min-w-0 ${isUser ? "rounded-2xl rounded-tr-[1px] rounded-br-lg bg-primary px-4 py-2.5 text-primary-foreground" : ""} ${hasSpawnTool ? "w-[85%] md:w-[75%]" : ""}`}>
         {isUser ? (
           <>
@@ -554,7 +597,7 @@ export function MessageRow({ message, isStreaming, subagentStore, pinnedToolCall
             {message.reasoning && !hasThinkingParts && <ThinkingPill text={message.reasoning} />}
             {Array.isArray(message.content) ? (message.content).map((part, i) => {
               if (part.type === "thinking") {
-                return <ThinkingPill key={`thinking-${i}`} text={part.text || ""} />;
+                return <ThinkingPill key={`thinking-${i}`} text={part.thinking || part.text || ""} />;
               }
               if (isToolCallPart(part)) {
                 const isSpawn = part.name === SPAWN_TOOL_NAME;

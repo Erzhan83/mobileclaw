@@ -36,12 +36,13 @@ import { parseServerCommands, ALL_COMMANDS, type Command } from "@/components/Co
 import { SetupDialog } from "@/components/SetupDialog";
 import { ChatHeader } from "@/components/ChatHeader";
 import { useThinkingState } from "@/hooks/useThinkingState";
-import { useScrollManager } from "@/hooks/useScrollManager";
+import { useScrollManager, PIN_LOCK_MS } from "@/hooks/useScrollManager";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { useKeyboardLayout } from "@/hooks/useKeyboardLayout";
 import { useTheme } from "@/hooks/useTheme";
 import { useSubagentStore } from "@/hooks/useSubagentStore";
 import { FloatingSubagentPanel } from "@/components/FloatingSubagentPanel";
+import { registerBridgeHandler, notifyWebViewReady, postScrollPosition, type BridgeMessage } from "@/lib/nativeBridge";
 
 // ── QueuePill ────────────────────────────────────────────────────────────────
 
@@ -93,6 +94,66 @@ function toWsUrl(url: string): string {
   return url.replace(/^http:\/\//, "ws://").replace(/^https:\/\//, "wss://");
 }
 
+/** Merge tool/tool_result messages into the preceding assistant's tool_call content parts,
+ *  normalize tool_call types/fields, and filter out the merged messages. */
+function mergeAndNormalizeToolResults(msgs: Message[]): Message[] {
+  const mergedIds = new Set<string>();
+  for (let i = 0; i < msgs.length; i++) {
+    const hm = msgs[i];
+    const toolName = hm.toolName || (hm as unknown as Record<string, unknown>).name as string | undefined;
+    if ((hm.role === "tool" || hm.role === "toolResult" || hm.role === "tool_result") && toolName) {
+      const resultText = getTextFromContent(hm.content);
+      let isErr = !!hm.isError;
+      if (!isErr && resultText) {
+        try {
+          const parsed = JSON.parse(resultText);
+          if (parsed && typeof parsed === "object") {
+            isErr = parsed.status === "error" || (typeof parsed.error === "string" && !!parsed.error) || parsed.isError === true;
+          }
+        } catch {}
+      }
+      for (let j = i - 1; j >= 0; j--) {
+        const prev = msgs[j];
+        if (prev.role === "assistant" && Array.isArray(prev.content)) {
+          const tc = prev.content.find((p) => p.name === toolName && !p.result);
+          if (tc) {
+            const args = tc.arguments;
+            tc.arguments = typeof args === "string" ? args : args ? JSON.stringify(args) : undefined;
+            tc.result = resultText;
+            tc.resultError = isErr;
+            tc.status = isErr ? "error" : "success";
+            if (hm.id) mergedIds.add(hm.id);
+            break;
+          }
+        }
+      }
+    }
+  }
+  for (const hm of msgs) {
+    if (hm.role !== "assistant" || !Array.isArray(hm.content)) continue;
+    for (const part of hm.content) {
+      if (!isToolCallPart(part) && part.name) {
+        (part).type = "tool_call";
+      }
+      if (isToolCallPart(part)) {
+        if (!part.result && !part.status) part.status = "running";
+        if (!part.toolCallId) {
+          const p = part as unknown as Record<string, unknown>;
+          const id = (p.tool_call_id || p.id) as string | undefined;
+          if (id) part.toolCallId = id;
+        }
+        if (!part.arguments) {
+          const p = part as unknown as Record<string, unknown>;
+          if (p.input) part.arguments = typeof p.input === "string" ? p.input : JSON.stringify(p.input);
+        } else if (typeof part.arguments !== "string") {
+          part.arguments = JSON.stringify(part.arguments);
+        }
+      }
+    }
+  }
+  return msgs.filter((m) => !m.id || !mergedIds.has(m.id));
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Home() {
@@ -102,13 +163,14 @@ export default function Home() {
   const isStreamingRef = useRef(false);
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [sentAnimId, setSentAnimId] = useState<string | null>(null);
+  const isNativeRef = useRef(false);
 
   // Sync ref immediately so scroll/wheel handlers see the correct value
   // without waiting for React's async render cycle.
   const {
-    scrollRef, bottomRef, morphRef, scrollPhase, pinnedToBottomRef,
+    scrollRef, bottomRef, morphRef, scrollPhase, pinnedToBottomRef, pinLockUntilRef,
     handleScroll, scrollToBottom, updateGraceForStreamingChange,
-  } = useScrollManager(messages, isStreamingRef);
+  } = useScrollManager(messages, isStreamingRef, isNativeRef);
 
   const setIsStreaming = useCallback((value: boolean) => {
     const wasStreaming = isStreamingRef.current;
@@ -143,6 +205,7 @@ export default function Home() {
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [isDetached, setIsDetached] = useState(false);
   const isDetachedRef = useRef(false);
+  const [isNative, setIsNative] = useState(false);
   const [uploadDisabled, setUploadDisabled] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const demoHandlerRef = useRef<ReturnType<typeof createDemoHandler> | null>(null);
@@ -161,6 +224,7 @@ export default function Home() {
 
   // Restore pinned subagent from sessionStorage after hydration
   useEffect(() => {
+    if (isNativeRef.current) return;
     try {
       const saved = sessionStorage.getItem("pinned-subagent");
       if (saved) setPinnedSubagent(JSON.parse(saved));
@@ -334,7 +398,7 @@ export default function Home() {
   }, []);
 
   // ── Keyboard layout (iOS Safari) ───────────────────────────────────────────
-  useKeyboardLayout(appRef, floatingBarRef, bottomRef);
+  useKeyboardLayout(appRef, floatingBarRef, bottomRef, !isNative);
 
   // ── Pull-to-refresh ─────────────────────────────────────────────────────────
   /** Send a typed message over the WebSocket (avoids double-cast). */
@@ -345,7 +409,7 @@ export default function Home() {
   const {
     pullContentRef, pullSpinnerRef, isPullingRef: _isPullingRef,
     onHistoryReceived,
-  } = usePullToRefresh({ scrollRef, backendMode, sendWS, sessionKeyRef });
+  } = usePullToRefresh({ scrollRef, backendMode, sendWS, sessionKeyRef, enabled: !isNative });
 
   // ── WebSocket sub-handlers ─────────────────────────────────────────────────
 
@@ -405,18 +469,80 @@ export default function Home() {
     return [...prev, { role: "assistant", content: [], id: runId, timestamp: ts, ...extra } as Message];
   }, []);
 
-  /** Append a reasoning delta to an existing or new assistant message. */
-  const appendReasoning = useCallback((runId: string, ts: number, delta: string) => {
+  /** Append a content text delta to an existing or new assistant message. */
+  const appendContentDelta = useCallback((runId: string, delta: string, ts: number) => {
+    beginContentArrival();
     setMessages((prev: Message[]) => {
-      const idx = prev.findIndex((m) => m.id === runId);
-      if (idx >= 0) {
-        return updateAt(prev, idx, (msg) => ({
-          ...msg,
-          reasoning: (msg.reasoning || "") + delta,
-        }));
-      }
-      setStreamingId(runId);
-      return [...prev, { role: "assistant", content: [], id: runId, timestamp: ts, reasoning: delta } as Message];
+      const updated = ensureStreamingMessage(prev, runId, ts);
+      const idx = updated.findIndex((m) => m.id === runId);
+      if (idx < 0) return updated;
+      return updateAt(updated, idx, (target) => {
+        const parts = Array.isArray(target.content) ? [...target.content] : [];
+        const lastToolIdx = parts.findLastIndex((p: ContentPart) => isToolCallPart(p));
+        const lastTextIdx = parts.findLastIndex((p: ContentPart) => p.type === "text");
+        if (lastTextIdx > lastToolIdx) {
+          parts[lastTextIdx] = { ...parts[lastTextIdx], text: (parts[lastTextIdx].text || "") + delta };
+        } else {
+          parts.push({ type: "text" as const, text: delta });
+        }
+        return { ...target, content: parts };
+      });
+    });
+  }, [beginContentArrival, ensureStreamingMessage]);
+
+  /** Append a thinking/reasoning delta as a content part. */
+  const appendThinkingDelta = useCallback((runId: string, delta: string, ts: number) => {
+    beginContentArrival();
+    setMessages((prev: Message[]) => {
+      const updated = ensureStreamingMessage(prev, runId, ts);
+      const idx = updated.findIndex((m) => m.id === runId);
+      if (idx < 0) return updated;
+      return updateAt(updated, idx, (target) => {
+        const parts = Array.isArray(target.content) ? [...target.content] : [];
+        const lastThinkIdx = parts.findLastIndex((p: ContentPart) => p.type === "thinking");
+        const lastToolIdx = parts.findLastIndex((p: ContentPart) => isToolCallPart(p));
+        if (lastThinkIdx > lastToolIdx) {
+          parts[lastThinkIdx] = { ...parts[lastThinkIdx], type: "thinking", text: (parts[lastThinkIdx].text || "") + delta };
+        } else {
+          parts.push({ type: "thinking" as const, text: delta });
+        }
+        return { ...target, content: parts };
+      });
+    });
+  }, [beginContentArrival, ensureStreamingMessage]);
+
+  /** Add a running tool call to an existing or new assistant message. */
+  const addToolCall = useCallback((runId: string, name: string, ts: number, toolCallId?: string, args?: string) => {
+    beginContentArrival();
+    setMessages((prev: Message[]) => {
+      const updated = ensureStreamingMessage(prev, runId, ts);
+      const idx = updated.findIndex((m) => m.id === runId);
+      if (idx < 0) return updated;
+      return updateAt(updated, idx, (target) => ({
+        ...target,
+        content: [...(Array.isArray(target.content) ? target.content : []), {
+          type: "tool_call" as const, name, toolCallId, arguments: args, status: "running" as const,
+        }],
+      }));
+    });
+  }, [beginContentArrival, ensureStreamingMessage]);
+
+  /** Resolve a running tool call with its result. */
+  const resolveToolCall = useCallback((runId: string, name: string, toolCallId?: string, result?: string, isError?: boolean) => {
+    setMessages((prev: Message[]) => {
+      let idx = prev.findIndex((m) => m.id === runId);
+      if (idx < 0) idx = prev.findLastIndex((m) => m.role === "assistant");
+      if (idx < 0 || !Array.isArray(prev[idx].content)) return prev;
+      return updateAt(prev, idx, (target) => ({
+        ...target,
+        content: (target.content as ContentPart[]).map((part) => {
+          if (isToolCallPart(part)) {
+            const isMatch = toolCallId ? part.toolCallId === toolCallId : part.name === name && !part.result;
+            if (isMatch) return { ...part, status: isError ? "error" as const : "success" as const, result, resultError: isError };
+          }
+          return part;
+        }),
+      }));
     });
   }, []);
 
@@ -591,70 +717,7 @@ export default function Home() {
         } as Message;
       });
 
-    // Merge tool results into the preceding assistant's tool call content parts
-    const mergedIds = new Set<string>();
-    for (let i = 0; i < historyMessages.length; i++) {
-      const hm = historyMessages[i];
-      if ((hm.role === "tool" || hm.role === "toolResult" || hm.role === "tool_result") && hm.toolName) {
-        const resultText = getTextFromContent(hm.content);
-        // Detect error from message flag OR from result content
-        let isErr = !!hm.isError;
-        if (!isErr && resultText) {
-          try {
-            const parsed = JSON.parse(resultText);
-            if (parsed && typeof parsed === "object") {
-              isErr = parsed.status === "error" || (typeof parsed.error === "string" && !!parsed.error) || parsed.isError === true;
-            }
-          } catch {}
-        }
-        for (let j = i - 1; j >= 0; j--) {
-          const prev = historyMessages[j];
-          if (prev.role === "assistant" && Array.isArray(prev.content)) {
-            const tc = prev.content.find((p) => p.name === hm.toolName && !p.result);
-            if (tc) {
-              const args = tc.arguments;
-              tc.arguments = typeof args === "string" ? args : args ? JSON.stringify(args) : undefined;
-              tc.result = resultText;
-              tc.resultError = isErr;
-              tc.status = isErr ? "error" : "success";
-              if (hm.id) mergedIds.add(hm.id);
-              break;
-            }
-          }
-        }
-      }
-    }
-    // Normalize tool call parts from server history:
-    // - Set status to "running" for tool calls without results (server doesn't send status)
-    // - Normalize toolCallId from server field names (id, tool_call_id)
-    // - Stringify non-string arguments
-    for (const hm of historyMessages) {
-      if (hm.role !== "assistant" || !Array.isArray(hm.content)) continue;
-      for (const part of hm.content) {
-        if (!isToolCallPart(part) && part.name) {
-          // Server may send "tool_use" type — normalize to "tool_call"
-          (part).type = "tool_call";
-        }
-        if (isToolCallPart(part)) {
-          if (!part.result && !part.status) part.status = "running";
-          // Normalize toolCallId from various server field names
-          if (!part.toolCallId) {
-            const p = part as unknown as Record<string, unknown>;
-            const id = (p.tool_call_id || p.id) as string | undefined;
-            if (id) part.toolCallId = id;
-          }
-          // Normalize arguments from server field names
-          if (!part.arguments) {
-            const p = part as unknown as Record<string, unknown>;
-            if (p.input) part.arguments = typeof p.input === "string" ? p.input : JSON.stringify(p.input);
-          } else if (typeof part.arguments !== "string") {
-            part.arguments = JSON.stringify(part.arguments);
-          }
-        }
-      }
-    }
-
-    const finalMessages = historyMessages.filter((m) => !m.id || !mergedIds.has(m.id));
+    const finalMessages = mergeAndNormalizeToolResults(historyMessages);
 
     // Extract model from history
     const lastAssistantRaw = rawMsgs.filter((m) => m.role === "assistant" && m.model).pop();
@@ -1024,109 +1087,26 @@ export default function Home() {
         if (toolName === SPAWN_TOOL_NAME && toolCallId) {
           subagentStore.registerSpawn(toolCallId);
         }
-        beginContentArrival();
-        setMessages((prev: Message[]) => {
-          const toolCallPart: ContentPart = {
-            type: "tool_call",
-            name: toolName,
-            toolCallId,
-            arguments: payload.data.args ? JSON.stringify(payload.data.args) : undefined,
-            status: "running",
-          };
-
-          const idx = prev.findIndex((m) => m.id === payload.runId);
-          if (idx >= 0) {
-            return updateAt(prev, idx, (target) => ({
-              ...target,
-              content: [...(Array.isArray(target.content) ? target.content : []), toolCallPart],
-            }));
-          }
-
-          setStreamingId(payload.runId);
-          return [...prev, {
-            role: "assistant",
-            content: [toolCallPart],
-            id: payload.runId,
-            timestamp: payload.ts,
-          } as Message];
-        });
+        addToolCall(payload.runId, toolName, payload.ts, toolCallId, payload.data.args ? JSON.stringify(payload.data.args) : undefined);
       } else if (phase === "result" && toolName) {
         const resultText = typeof payload.data.result === "string"
           ? payload.data.result : JSON.stringify(payload.data.result, null, 2);
-        const isErr = !!payload.data.isError;
-        setMessages((prev: Message[]) => {
-          let idx = prev.findIndex((m) => m.id === payload.runId);
-          if (idx < 0) idx = prev.findLastIndex((m) => m.role === "assistant");
-          if (idx < 0 || !Array.isArray(prev[idx].content)) return prev;
-          return updateAt(prev, idx, (target) => ({
-            ...target,
-            content: (target.content as ContentPart[]).map((part) => {
-              if (isToolCallPart(part)) {
-                const isMatch = toolCallId
-                  ? part.toolCallId === toolCallId
-                  : part.name === toolName && !part.result;
-                if (isMatch) {
-                  return { ...part, status: isErr ? "error" as const : "success" as const, result: resultText, resultError: isErr };
-                }
-              }
-              return part;
-            }),
-          }));
-        });
+        resolveToolCall(payload.runId, toolName, toolCallId, resultText, !!payload.data.isError);
       }
     }
 
     if (payload.stream === "reasoning") {
       const delta = (payload.data.delta || payload.data.text || payload.data.content || "") as string;
       if (!delta) return;
-      beginContentArrival();
-      setMessages((prev: Message[]) => {
-        const updated = ensureStreamingMessage(prev, payload.runId, payload.ts);
-        const idx = updated.findIndex((m) => m.id === payload.runId);
-        if (idx < 0) return updated;
-        return updateAt(updated, idx, (target) => {
-          const parts = Array.isArray(target.content) ? [...target.content] : [];
-          // Append to the trailing thinking part, or create one after the last tool call
-          const lastThinkIdx = parts.findLastIndex((p: ContentPart) => p.type === "thinking");
-          const lastToolIdx = parts.findLastIndex(
-            (p: ContentPart) => isToolCallPart(p)
-          );
-          if (lastThinkIdx > lastToolIdx) {
-            // Append to existing thinking part (after last tool)
-            parts[lastThinkIdx] = { ...parts[lastThinkIdx], type: "thinking", text: (parts[lastThinkIdx].text || "") + delta };
-          } else {
-            // New thinking segment after the last tool call
-            parts.push({ type: "thinking" as const, text: delta });
-          }
-          return { ...target, content: parts };
-        });
-      });
+      appendThinkingDelta(payload.runId, delta, payload.ts);
     }
 
     if (payload.stream === "content") {
       const delta = (payload.data.delta || payload.data.text || payload.data.content || "") as string;
       if (!delta) return;
-      beginContentArrival();
-      setMessages((prev: Message[]) => {
-        const updated = ensureStreamingMessage(prev, payload.runId, payload.ts);
-        const idx = updated.findIndex((m) => m.id === payload.runId);
-        if (idx < 0) return updated;
-        return updateAt(updated, idx, (target) => {
-          const parts = Array.isArray(target.content) ? [...target.content] : [];
-          const lastToolIdx = parts.findLastIndex(
-            (p: ContentPart) => isToolCallPart(p)
-          );
-          const lastTextIdx = parts.findLastIndex((p: ContentPart) => p.type === "text");
-          if (lastTextIdx > lastToolIdx) {
-            parts[lastTextIdx] = { ...parts[lastTextIdx], text: (parts[lastTextIdx].text || "") + delta };
-          } else {
-            parts.push({ type: "text" as const, text: delta });
-          }
-          return { ...target, content: parts };
-        });
-      });
+      appendContentDelta(payload.runId, delta, payload.ts);
     }
-  }, [appendReasoning, ensureStreamingMessage, beginContentArrival, markRunStart, markRunEnd, setIsStreaming, subagentStore]);
+  }, [appendContentDelta, appendThinkingDelta, addToolCall, resolveToolCall, markRunStart, markRunEnd, setIsStreaming, subagentStore]);
 
   // ── Main WebSocket message dispatcher ─────────────────────────────────────
 
@@ -1230,7 +1210,7 @@ export default function Home() {
     },
     onInitialConnectFail: () => {
       setConnectionError("Could not reach server");
-      if (!isDetachedRef.current) setShowSetup(true);
+      if (!isDetachedRef.current && !isNativeRef.current) setShowSetup(true);
     },
     onClose: () => {
       if (historyPollRef.current) { clearInterval(historyPollRef.current); historyPollRef.current = null; }
@@ -1256,15 +1236,152 @@ export default function Home() {
     markEstablishedRef.current = markEstablished;
   }, [markEstablished]);
 
+  // ── Native bridge message handler ──────────────────────────────────────────
+  const handleNativeBridgeMessage = useCallback((msg: BridgeMessage) => {
+    switch (msg.type) {
+      case "messages:history": {
+        const allMsgs = msg.payload as Message[];
+        // Filter out /commands exchanges (may be persisted by the web app's silent fetch)
+        const skip = new Set<number>();
+        for (let i = 0; i < allMsgs.length; i++) {
+          const m = allMsgs[i];
+          const text = getTextFromContent(m.content);
+          if (m.role === "user" && text.trim() === "/commands") {
+            skip.add(i);
+            if (i + 1 < allMsgs.length && allMsgs[i + 1].role === "assistant") skip.add(i + 1);
+          }
+          if (m.role === "assistant" && m.stopReason === STOP_REASON_INJECTED && !skip.has(i)) {
+            const parsed = parseServerCommands(text);
+            if (parsed.length >= 8) skip.add(i);
+          }
+        }
+        const filtered = skip.size > 0 ? allMsgs.filter((_, i) => !skip.has(i)) : allMsgs;
+        setMessages(mergeAndNormalizeToolResults(filtered));
+        setHistoryLoaded(true);
+        break;
+      }
+      case "messages:append": {
+        const newMsg = msg.payload as Message;
+        pinnedToBottomRef.current = true;
+        pinLockUntilRef.current = Date.now() + PIN_LOCK_MS;
+        setMessages((prev) => [...prev, newMsg]);
+        break;
+      }
+      case "messages:update": {
+        const update = msg.payload as { id: string; patch: Partial<Message> };
+        setMessages((prev) => prev.map((m) =>
+          m.id === update.id ? { ...m, ...update.patch } : m
+        ));
+        break;
+      }
+      case "messages:clear":
+        setMessages([]);
+        break;
+      case "stream:start": {
+        const { runId, ts } = msg.payload as { runId: string; ts: number };
+        pinnedToBottomRef.current = true;
+        pinLockUntilRef.current = Date.now() + PIN_LOCK_MS;
+        setIsStreaming(true);
+        setStreamingId(runId);
+        setAwaitingResponse(true);
+        setMessages((prev) => [...prev, { role: "assistant", content: [], id: runId, timestamp: ts } as Message]);
+        break;
+      }
+      case "stream:contentDelta": {
+        const { runId, delta, ts } = msg.payload as { runId: string; delta: string; ts: number };
+        appendContentDelta(runId, delta, ts);
+        break;
+      }
+      case "stream:reasoningDelta": {
+        const { runId, delta, ts } = msg.payload as { runId: string; delta: string; ts: number };
+        appendThinkingDelta(runId, delta, ts);
+        break;
+      }
+      case "stream:toolStart": {
+        const { runId, name, args, toolCallId, ts } = msg.payload as { runId: string; name: string; args?: string; toolCallId?: string; ts: number };
+        addToolCall(runId, name, ts, toolCallId, args);
+        break;
+      }
+      case "stream:toolResult": {
+        const { runId, name, toolCallId, result, isError } = msg.payload as { runId: string; name: string; toolCallId?: string; result?: string; isError?: boolean };
+        resolveToolCall(runId, name, toolCallId, result, isError);
+        break;
+      }
+      case "stream:end": {
+        setIsStreaming(false);
+        setStreamingId(null);
+        setAwaitingResponse(false);
+        break;
+      }
+      case "stream:error": {
+        const { errorMessage } = (msg.payload || {}) as { errorMessage?: string };
+        setIsStreaming(false);
+        setStreamingId(null);
+        setAwaitingResponse(false);
+        setMessages((prev) => [...prev, {
+          role: "system",
+          content: [{ type: "text", text: errorMessage || "Error" }],
+          id: `err-${Date.now()}`,
+          timestamp: Date.now(),
+          isError: true,
+        } as Message]);
+        break;
+      }
+      case "thinking:show":
+        pinnedToBottomRef.current = true;
+        pinLockUntilRef.current = Date.now() + PIN_LOCK_MS;
+        setAwaitingResponse(true);
+        setThinkingStartTime(Date.now());
+        break;
+      case "thinking:hide":
+        setAwaitingResponse(false);
+        break;
+      case "theme:set": {
+        const { theme: newTheme } = msg.payload as { theme: "light" | "dark" };
+        const html = document.documentElement;
+        if (newTheme === "dark") html.classList.add("dark");
+        else html.classList.remove("dark");
+        break;
+      }
+      case "scroll:toBottom":
+        scrollToBottom();
+        break;
+      case "connection:state": {
+        // Visual feedback only — native manages actual connection
+        break;
+      }
+      case "subagent:update": {
+        // Placeholder for subagent store forwarding from native
+        break;
+      }
+      case "subagent:clear":
+        subagentStore.clearAll();
+        break;
+    }
+  }, [setIsStreaming, setAwaitingResponse, setThinkingStartTime, appendContentDelta, appendThinkingDelta, addToolCall, resolveToolCall, scrollToBottom, subagentStore]);
+
   // ── Demo mode ─────────────────────────────────────────────────────────────
 
-  // Detect ?detached and ?demo URL params on mount
+  // Detect ?detached, ?native, and ?demo URL params on mount
   useEffect(() => {
     if (getSearchParam("detached") !== null) {
       setIsDetached(true);
       isDetachedRef.current = true;
       document.body.style.background = "transparent";
       document.documentElement.style.background = "transparent";
+    }
+    if (getSearchParam("native") !== null || (window as any).__nativeMode) {
+      setIsNative(true);
+      isNativeRef.current = true;
+      document.body.classList.add("native");
+      document.body.style.background = "transparent";
+      document.documentElement.style.background = "transparent";
+      document.documentElement.classList.remove("native-loading");
+      // Register bridge handler for messages from Swift
+      registerBridgeHandler((msg: BridgeMessage) => {
+        handleNativeBridgeMessage(msg);
+      });
+      notifyWebViewReady();
     }
     if (getSearchParam("upload") === "false") {
       setUploadDisabled(true);
@@ -1463,6 +1580,8 @@ export default function Home() {
   useEffect(() => {
     if (getSearchParam("demo") !== null) return;
     if (isDemoMode) return;
+    // Native mode — Swift manages all connections, skip web init
+    if (isNativeRef.current) { setHistoryLoaded(true); return; }
 
     // Detached mode with ?url param — connect directly, skip localStorage
     const detached = getSearchParam("detached") !== null;
@@ -1607,6 +1726,7 @@ export default function Home() {
     lastCommandRef.current = isSlashCommand ? text.trim().split(/\s/)[0].toLowerCase() : null;
     if (!isDetachedRef.current) void requestNotificationPermission();
     pinnedToBottomRef.current = true;
+    pinLockUntilRef.current = Date.now() + PIN_LOCK_MS;
 
     // Show user message immediately with local previews
     const contentParts: ContentPart[] = [];
@@ -1850,13 +1970,16 @@ export default function Home() {
   }
 
   const inputZoneHeight = "calc(1.5dvh + 3.5rem)";
-  const bottomPad = pinnedSubagent ? (isDetached ? "10rem" : "16rem")
+  const bottomPad = isNative ? "8rem"
+    : pinnedSubagent ? (isDetached ? "10rem" : "16rem")
     : queuedMessage ? (isDetached ? "7rem" : "13rem")
     : (isDetached ? "4rem" : "10rem");
 
+  const hideChrome = isDetached || isNative;
+
   const chatWidget = (
-    <div ref={appRef} className={`relative flex flex-col overflow-hidden ${isDetached ? "" : "bg-background"}`} style={{ height: "100dvh" }}>
-      {!isDetached && (
+    <div ref={appRef} className={`relative flex flex-col overflow-hidden ${hideChrome ? "" : "bg-background"}`} style={{ height: "100dvh" }}>
+      {!hideChrome && (
         <>
           <SetupDialog
             onConnect={(config) => {
@@ -1881,15 +2004,22 @@ export default function Home() {
       )}
 
       <div ref={pullContentRef} className={`relative flex flex-1 flex-col min-h-0 ${isDetached ? "px-3 pt-3" : ""}`}>
-        <div className={`pointer-events-none absolute z-20 h-7 opacity-60 ${isDetached ? "inset-x-3 top-3 rounded-t-2xl" : "inset-x-0 top-[60px]"}`} style={{ background: "linear-gradient(to bottom, var(--background) 40%, transparent)" }} />
-        <div className={`pointer-events-none absolute z-20 h-7 opacity-60 ${isDetached ? "inset-x-3 rounded-b-2xl" : "inset-x-0"}`} style={{ bottom: isDetached ? inputZoneHeight : 0, background: "linear-gradient(to top, var(--background) 40%, transparent)" }} />
+        {!isNative && <div className={`pointer-events-none absolute z-20 h-7 opacity-60 ${isDetached ? "inset-x-3 top-3 rounded-t-2xl" : "inset-x-0 top-[60px]"}`} style={{ background: "linear-gradient(to bottom, var(--background) 40%, transparent)" }} />}
+        {!isNative && <div className={`pointer-events-none absolute z-20 h-7 opacity-60 ${isDetached ? "inset-x-3 rounded-b-2xl" : "inset-x-0"}`} style={{ bottom: isDetached ? inputZoneHeight : 0, background: "linear-gradient(to top, var(--background) 40%, transparent)" }} />}
         <main
           ref={scrollRef}
-          onScroll={handleScroll}
-          className={`flex-1 overflow-y-auto overflow-x-hidden bg-background ${isDetached ? "rounded-2xl" : "pt-14"}`}
-          style={{ overscrollBehavior: "none", ...(isDetached ? { boxShadow: "0 -4px 6px -1px rgb(0 0 0 / 0.06), 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)" } : {}) }}
+          onScroll={() => {
+            handleScroll();
+            if (isNativeRef.current && scrollRef.current) {
+              const el = scrollRef.current;
+              const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+              postScrollPosition(distFromBottom);
+            }
+          }}
+          className={`flex-1 overflow-y-auto overflow-x-hidden ${isNative ? "" : "bg-background"} ${isDetached ? "rounded-2xl" : "pt-14"}`}
+          style={{ ...(isNative ? {} : { overscrollBehavior: "none" as const }), ...(isDetached ? { boxShadow: "0 -4px 6px -1px rgb(0 0 0 / 0.06), 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)" } : {}) }}
         >
-          <div className={`mx-auto flex w-full ${isDetached ? "max-w-none" : "max-w-2xl"} flex-col gap-3 px-4 py-6 md:px-6 md:py-4 transition-opacity duration-300 ease-out ${historyLoaded ? "opacity-100" : "opacity-0"}`} style={{ paddingBottom: bottomPad }}>
+          <div className={`mx-auto flex w-full ${isDetached || isNative ? "max-w-none" : "max-w-2xl"} flex-col gap-3 px-4 py-6 md:px-6 md:py-4 transition-opacity duration-300 ease-out ${historyLoaded ? "opacity-100" : "opacity-0"}`} style={{ paddingBottom: bottomPad }}>
             {displayMessages.map((msg, idx) => {
               const side = getMessageSide(msg.role);
               const prevSide = idx > 0 ? getMessageSide(displayMessages[idx - 1].role) : null;
@@ -1925,14 +2055,14 @@ export default function Home() {
                 </React.Fragment>
               );
             })}
-            <ThinkingIndicator visible={isRunActive} startTime={thinkingStartTime ?? undefined} label={thinkingLabel} />
+            <ThinkingIndicator visible={awaitingResponse} startTime={thinkingStartTime ?? undefined} label={thinkingLabel} />
             <div ref={bottomRef} />
           </div>
         </main>
         {/* Spacer (detached only) — pushes main's bg up so the input bar floats on transparent bg */}
-        {isDetached && <div style={{ height: inputZoneHeight, flexShrink: 0 }} />}
+        {isDetached && !isNative && <div style={{ height: inputZoneHeight, flexShrink: 0 }} />}
         {/* Pull-to-refresh spinner */}
-        {!isDetached && (
+        {!isDetached && !isNative && (
           <div
             ref={pullSpinnerRef}
             className="flex h-0 items-center justify-center gap-2 overflow-visible"
@@ -1946,8 +2076,8 @@ export default function Home() {
         )}
       </div>
 
-      {/* Floating quote button */}
-      {quotePopup && (
+      {/* Floating quote button — hidden in native mode (SwiftUI handles this) */}
+      {quotePopup && !isNative && (
         <button
           ref={quotePopupRef}
           type="button"
@@ -1967,8 +2097,8 @@ export default function Home() {
         </button>
       )}
 
-      {/* Floating morphing bar */}
-      <div
+      {/* Floating morphing bar — hidden in native mode (SwiftUI handles input) */}
+      {!isNative && <div
         ref={floatingBarRef}
         className={`pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center px-3 ${isDetached ? "pb-[1.5dvh]" : "pb-[3dvh]"} md:px-6 ${isDetached ? "md:pb-[1.5dvh]" : "md:pb-[3dvh]"} animate-[fadeIn_400ms_ease-out]`}
       >
@@ -2019,7 +2149,7 @@ export default function Home() {
             uploadDisabled={uploadDisabled}
           />
         </div>
-      </div>
+      </div>}
     </div>
   );
 
