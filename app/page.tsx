@@ -262,6 +262,10 @@ export default function Home() {
   // History polling for mid-run reconnect: poll until the run completes
   const historyPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Track seen message IDs for fade-in animation on newly-arrived messages
+  const prevMsgIdsRef = useRef<Set<string>>(new Set());
+  const historyWasLoadedRef = useRef(false);
+
   // Subagent history: track pending requests (reqId → sessionKey) and already-fetched keys
   const pendingSubhistoryRef = useRef<Map<string, string>>(new Map());
   const fetchedSubhistoryRef = useRef<Set<string>>(new Set());
@@ -1990,6 +1994,19 @@ export default function Home() {
     );
   }
 
+  // Compute which messages are new since last render (for fade-in animation).
+  // Skip detection on the first render where history loads to avoid animating
+  // the entire initial conversation — the container transition handles that.
+  const fadeInIds = new Set<string>();
+  const currentMsgIds = new Set(displayMessages.map(m => m.id).filter(Boolean) as string[]);
+  if (historyLoaded && historyWasLoadedRef.current) {
+    for (const id of currentMsgIds) {
+      if (!prevMsgIdsRef.current.has(id)) fadeInIds.add(id);
+    }
+  }
+  prevMsgIdsRef.current = currentMsgIds;
+  historyWasLoadedRef.current = historyLoaded;
+
   const inputZoneHeight = "calc(1.5dvh + 3.5rem)";
   const bottomPad = isNative ? "8rem"
     : pinnedSubagent ? (isDetached ? "10rem" : "16rem")
@@ -2068,7 +2085,13 @@ export default function Home() {
                     </p>
                   )}
                   <div
-                    style={msg.id === sentAnimId ? { animation: "messageSend 350ms cubic-bezier(0.34, 1.56, 0.64, 1) both", transformOrigin: "bottom right" } : undefined}
+                    style={
+                      msg.id === sentAnimId
+                        ? { animation: "messageSend 350ms cubic-bezier(0.34, 1.56, 0.64, 1) both", transformOrigin: "bottom right" }
+                        : msg.id && fadeInIds.has(msg.id)
+                          ? { animation: "fadeIn 250ms ease-out" }
+                          : undefined
+                    }
                     onAnimationEnd={msg.id === sentAnimId ? () => setSentAnimId(null) : undefined}
                   >
                     <MessageRow message={msg} isStreaming={isStreaming && msg.id === streamingId} subagentStore={subagentStore} pinnedToolCallId={pinnedSubagent?.toolCallId} onPin={handlePinSubagent} onUnpin={handleUnpinSubagent} />
