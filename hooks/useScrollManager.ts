@@ -144,10 +144,12 @@ export function useScrollManager(
 
       const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
 
-      // During streaming, don't update pinning from scroll position —
-      // only the wheel/touch handlers can unpin, and scrollToBottom re-pins.
+      // During streaming: allow re-pinning when user scrolls near bottom,
+      // but don't auto-unpin (the wheel/touch handlers handle explicit unpinning).
       if (!isStreamingRef.current && !scrollGraceRef.current) {
         pinnedToBottomRef.current = distanceFromBottom < 80;
+      } else if (!pinnedToBottomRef.current && distanceFromBottom < 80) {
+        pinnedToBottomRef.current = true;
       }
 
       // When streaming and pinned, lock morph to input mode (--sp = 0)
@@ -401,7 +403,7 @@ export function useScrollManager(
       const velocity = dt > 0 && dt < 200 ? (currentScrollTop - prevScrollTop) / dt : 0;
       const atBottom = isAtBottom();
 
-      if (atBottom && !wasAtBottomLast && velocity > 0.3 && !isBouncing && !isAnimatingScrollRef.current && !morphSuppressedRef.current) {
+      if (atBottom && !wasAtBottomLast && velocity > 0.3 && !isBouncing && !isAnimatingScrollRef.current && !morphSuppressedRef.current && !isStreamingRef.current) {
         // Arrived at bottom with momentum — smooth rAF-driven bounce
         const raw = Math.min(velocity * 150, 120);
         const peak = -rubberBand(raw);
@@ -448,6 +450,13 @@ export function useScrollManager(
         const dist = el.scrollHeight - currentScrollTop - el.clientHeight;
         if (dist > 150) {
           pinnedToBottomRef.current = false;
+        }
+      }
+      // ── Re-pin during streaming/grace if user scrolls near bottom ──
+      if ((isStreamingRef.current || scrollGraceRef.current) && !pinnedToBottomRef.current) {
+        const dist = el.scrollHeight - currentScrollTop - el.clientHeight;
+        if (dist < 80) {
+          pinnedToBottomRef.current = true;
         }
       }
       lastScrollTop = currentScrollTop;
