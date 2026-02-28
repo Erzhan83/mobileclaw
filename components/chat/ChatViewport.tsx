@@ -685,6 +685,26 @@ export function ChatViewport({
                       : null}
                   </div>
                 )}
+                {showZenTimestampToggle && collapsedZenSibling && zenMeta && (
+                  <div className={`flex items-center gap-1 ${side === "right" ? "justify-end" : "justify-start"}`}>
+                    {msg.timestamp && (
+                      <p className={`text-2xs text-muted-foreground/60 ${side === "right" ? "text-right" : "text-left"}`}>
+                        {formatMessageTime(msg.timestamp)}
+                        {msg.role === "assistant" && msg.runDuration && msg.runDuration > 0 && (
+                          <span className="ml-1">&middot; Worked for {msg.runDuration}s</span>
+                        )}
+                        {msg.role === "assistant" && !msg.runDuration && msg.thinkingDuration && msg.thinkingDuration > 0 && (
+                          <span className="ml-1">&middot; {msg.thinkingDuration}s</span>
+                        )}
+                      </p>
+                    )}
+                    <ZenToggle
+                      expanded={zenToggleExpandedVisual}
+                      onClick={() => handleToggleZenGroup(zenMeta.groupId)}
+                      className="shrink-0"
+                    />
+                  </div>
+                )}
                 <div
                   style={messageRowWrapperStyle}
                   onAnimationEnd={!isZenSiblingRow && msg.id === sentAnimId ? onSentAnimationEnd : undefined}

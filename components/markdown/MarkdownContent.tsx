@@ -147,19 +147,26 @@ export function InlineMarkdown({ text, cursor }: { text: string; cursor?: React.
 
     // Ordered list
     if (line.match(/^\d+\.\s/)) {
-      const listItems: string[] = [];
-      while (i < lines.length && lines[i].match(/^\d+\.\s/)) {
-        const match = lines[i].match(/^\d+\.\s(.*)/);
-        if (match) listItems.push(match[1]);
-        i++;
+      const listItems: { num: string; text: string }[] = [];
+      while (i < lines.length) {
+        const numMatch = lines[i].match(/^(\d+)\.\s(.*)/);
+        if (numMatch) {
+          listItems.push({ num: numMatch[1], text: numMatch[2] });
+          i++;
+        } else if (lines[i].trim() === "" && i + 1 < lines.length && lines[i + 1].match(/^\d+\.\s/)) {
+          // Skip blank lines between numbered items
+          i++;
+        } else {
+          break;
+        }
       }
       const listIsLast = i >= lines.length;
       elements.push(
         <ol key={`ol-${i}`} className="my-1.5 flex flex-col gap-0.5">
           {listItems.map((item, j) => (
             <li key={j} className="flex gap-1.5 pl-1 text-foreground">
-              <span className="shrink-0 text-muted-foreground">{j + 1}.</span>
-              <span>{renderInline(item)}{listIsLast && j === listItems.length - 1 ? cursor : undefined}</span>
+              <span className="shrink-0 text-muted-foreground">{item.num}.</span>
+              <span>{renderInline(item.text)}{listIsLast && j === listItems.length - 1 ? cursor : undefined}</span>
             </li>
           ))}
         </ol>

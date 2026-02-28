@@ -62,9 +62,12 @@ describe("ChatViewport zen grouping", () => {
     const collapsedAssistantRow = screen.getByText("assistant first").closest('[data-message-role="assistant"]');
     expect(collapsedAssistantRow?.parentElement).toHaveStyle({ marginBottom: "-0.75rem" });
     expect(screen.getByText("assistant second")).toBeVisible();
-    expect(screen.getByTestId("zen-toggle").closest('[data-message-role="assistant"]')).toBeNull();
+    const togglesBefore = screen.getAllByTestId("zen-toggle");
+    for (const toggle of togglesBefore) {
+      expect(toggle.closest('[data-message-role="assistant"]')).toBeNull();
+    }
 
-    fireEvent.click(screen.getByTestId("zen-toggle"));
+    fireEvent.click(togglesBefore[0]);
     await waitFor(() => {
       const firstExpandedGrid = findSlideGrid(screen.getByText("assistant first"));
       expect(firstExpandedGrid).not.toBeNull();
@@ -75,7 +78,10 @@ describe("ChatViewport zen grouping", () => {
     const secondAssistantRow = screen.getByText("assistant second").closest('[data-message-role="assistant"]');
     expect(firstAssistantRow).not.toBeNull();
     expect(secondAssistantRow).not.toBeNull();
-    expect(screen.getByTestId("zen-toggle").closest('[data-message-role="assistant"]')).toBeNull();
+    const togglesAfter = screen.getAllByTestId("zen-toggle");
+    for (const toggle of togglesAfter) {
+      expect(toggle.closest('[data-message-role="assistant"]')).toBeNull();
+    }
   });
 
   it("starts a new zen block when a new timestamp heading is shown", () => {

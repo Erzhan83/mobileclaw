@@ -47,4 +47,7 @@ fi
 
 cp -R "$EXPORT_DIR"/ "$DEST/"
 
+# Copy shared config files used by both web and native
+cp "$PROJECT_ROOT/shared/contextPrefixes.json" "$SCRIPT_DIR/MobileClaw/Resources/contextPrefixes.json"
+
 echo "Done. $(find "$DEST" -type f | wc -l | tr -d ' ') files copied."

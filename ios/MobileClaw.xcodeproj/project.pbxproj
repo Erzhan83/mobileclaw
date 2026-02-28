@@ -27,11 +27,14 @@
 		D04ABCEC39DE83E7C0515D51 /* NativeSetupDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90F05CAF98426227B6068C7 /* NativeSetupDialog.swift */; };
 		D17023B39483DF3F67774080 /* ChatWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4163307C6FADB868DD148C9E /* ChatWebView.swift */; };
 		E41C2CF6769E7ADD9A4E8C98 /* NativeChatInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565180E6FAD79E9211BBE242 /* NativeChatInput.swift */; };
+		F2E1D0C9B8A7065E4D3C2B1A /* contextPrefixes.json in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7A8B9C0D1E2F /* contextPrefixes.json */; };
 		EC6E391273ADB5B5ADD8F83E /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC09DFF76258BE92D0AD1276 /* ChatMessage.swift */; };
+		F2E1D0C9B8A7F6E5D4C3B2A1 /* ContextPrefixes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F2 /* ContextPrefixes.swift */; };
 		FC3F96D729AAFD0DF38AC831 /* web in Resources */ = {isa = PBXBuildFile; fileRef = F9A40F35267AF7C0400C56E8 /* web */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		1A2B3C4D5E6F7A8B9C0D1E2F /* contextPrefixes.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = contextPrefixes.json; sourceTree = "<group>"; };
 		15E155240F68B0123AAA7A20 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		20D7B99027A294C5E2AFDDA7 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		22A3227A38F42070FA3803C1 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -45,6 +48,7 @@
 		76069FE864EAED6CF12468F0 /* NativeImageLightbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeImageLightbox.swift; sourceTree = "<group>"; };
 		7BEE03EB5CF9D50B0E4E4BCC /* DeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentity.swift; sourceTree = "<group>"; };
 		7C20D87247DA53EEB12FFD65 /* OpenClawProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawProtocol.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A7B8C9D0E1F2 /* ContextPrefixes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextPrefixes.swift; sourceTree = "<group>"; };
 		A14C9515108FA6901183C480 /* WebSocketManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketManager.swift; sourceTree = "<group>"; };
 		B1CC5E97FEB8885BBDFED6E2 /* MobileClaw.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MobileClaw.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B6CA14D749B18DC60338112D /* BridgeMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeMessages.swift; sourceTree = "<group>"; };
@@ -63,6 +67,7 @@
 			isa = PBXGroup;
 			children = (
 				FD4C20E7F548C106EB0352B3 /* Assets.xcassets */,
+				1A2B3C4D5E6F7A8B9C0D1E2F /* contextPrefixes.json */,
 				15E155240F68B0123AAA7A20 /* Info.plist */,
 				F9A40F35267AF7C0400C56E8 /* web */,
 			);
@@ -136,6 +141,7 @@
 			isa = PBXGroup;
 			children = (
 				BC09DFF76258BE92D0AD1276 /* ChatMessage.swift */,
+				A1B2C3D4E5F6A7B8C9D0E1F2 /* ContextPrefixes.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -212,6 +218,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0A76D07C6B0372B93AB0A595 /* Assets.xcassets in Resources */,
+				F2E1D0C9B8A7065E4D3C2B1A /* contextPrefixes.json in Resources */,
 				FC3F96D729AAFD0DF38AC831 /* web in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -225,6 +232,7 @@
 			files = (
 				7698631545C89C924054CFA4 /* AppState.swift in Sources */,
 				42B5697AFB05DB4F515B1A45 /* BridgeMessages.swift in Sources */,
+				F2E1D0C9B8A7F6E5D4C3B2A1 /* ContextPrefixes.swift in Sources */,
 				EC6E391273ADB5B5ADD8F83E /* ChatMessage.swift in Sources */,
 				D17023B39483DF3F67774080 /* ChatWebView.swift in Sources */,
 				A2C09B289DE32ED1C5FEA5F8 /* DemoModeHandler.swift in Sources */,

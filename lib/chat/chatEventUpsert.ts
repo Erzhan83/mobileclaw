@@ -1,7 +1,5 @@
 import {
-  HEARTBEAT_MARKER,
-  SYSTEM_MESSAGE_PREFIX,
-  SYSTEM_PREFIX,
+  isContextText,
   isToolCallPart,
 } from "@/lib/constants";
 import { getTextFromContent, updateAt } from "@/lib/messageUtils";
@@ -9,13 +7,6 @@ import type { ChatEventPayload, ContentPart, Message } from "@/types/chat";
 
 function normalizeChatText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
-}
-
-function isContextUserText(text: string): boolean {
-  return !!(
-    text &&
-    (text.startsWith(SYSTEM_PREFIX) || text.startsWith(SYSTEM_MESSAGE_PREFIX) || text.includes(HEARTBEAT_MARKER))
-  );
 }
 
 function normalizeChatEventContent(content: ContentPart[] | string): ContentPart[] {
@@ -80,7 +71,7 @@ export function upsertChatEventMessage(prev: Message[], payload: ChatEventPayloa
       content: normalizedContent,
       timestamp: msg.timestamp ?? existing.timestamp,
       reasoning: msg.reasoning || existing.reasoning,
-      isContext: msg.role === "user" ? isContextUserText(nextText) : existing.isContext,
+      isContext: msg.role === "user" ? isContextText(nextText) : existing.isContext,
     }));
   }
 
@@ -98,7 +89,7 @@ export function upsertChatEventMessage(prev: Message[], payload: ChatEventPayloa
         content: normalizedContent,
         id: sideChannelId,
         timestamp: msg.timestamp,
-        isContext: isContextUserText(nextText),
+        isContext: isContextText(nextText),
       } as Message,
     ];
   }

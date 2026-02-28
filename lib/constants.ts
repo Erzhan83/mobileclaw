@@ -1,3 +1,14 @@
+import contextPrefixes from "@/shared/contextPrefixes.json";
+
+// Context detection — single source of truth is shared/contextPrefixes.json
+export const CONTEXT_STARTS_WITH: string[] = contextPrefixes.startsWith;
+export const CONTEXT_CONTAINS: string[] = contextPrefixes.contains;
+
+export function isContextText(text: string): boolean {
+  return CONTEXT_STARTS_WITH.some((p) => text.startsWith(p))
+    || CONTEXT_CONTAINS.some((m) => text.includes(m));
+}
+
 // Special message markers
 export const HEARTBEAT_MARKER = "HEARTBEAT_OK";
 export const NO_REPLY_MARKER = "NO_REPLY";
@@ -27,8 +38,10 @@ export function hasUnquotedMarker(text: string, marker: string): boolean {
   }
   return false;
 }
-export const SYSTEM_PREFIX = "System: [";
-export const SYSTEM_MESSAGE_PREFIX = "[System Message]";
+// Legacy named exports (derived from shared/contextPrefixes.json)
+export const SYSTEM_PREFIX = CONTEXT_STARTS_WITH[0];
+export const SYSTEM_MESSAGE_PREFIX = CONTEXT_STARTS_WITH[1];
+export const QUEUED_ANNOUNCE_PREFIX = CONTEXT_STARTS_WITH[2];
 export const GATEWAY_INJECTED_MODEL = "gateway-injected";
 export const LITTERBOX_UPLOAD_URL = "https://litterbox.catbox.moe/resources/internals/api.php";
 

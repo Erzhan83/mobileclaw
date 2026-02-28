@@ -241,7 +241,7 @@ final class OpenClawProtocol {
             // Detect context messages (system-injected user messages)
             if m["role"] as? String == "user" {
                 let text = extractUserText(m)
-                if text.hasPrefix("System: [") || text.hasPrefix("[System Message]") || text.contains("HEARTBEAT_OK") {
+                if ContextPrefixes.shared.isContext(text) {
                     m["isContext"] = true
                 }
             }
