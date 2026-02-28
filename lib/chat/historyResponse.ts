@@ -1,10 +1,8 @@
 import {
   GATEWAY_INJECTED_MODEL,
-  HEARTBEAT_MARKER,
   SPAWN_TOOL_NAME,
   STOP_REASON_INJECTED,
-  SYSTEM_MESSAGE_PREFIX,
-  SYSTEM_PREFIX,
+  isContextText,
   isToolCallPart,
 } from "@/lib/constants";
 import { getTextFromContent } from "@/lib/messageUtils";
@@ -109,13 +107,7 @@ export function buildHistoryMessages(rawMessages: RawHistoryMessage[]): Message[
       let isContext = false;
       if (raw.role === "user" && Array.isArray(filteredContent)) {
         const textPart = filteredContent.find((p) => p.type === "text" && p.text);
-        if (
-          textPart?.text &&
-          typeof textPart.text === "string" &&
-          (textPart.text.startsWith(SYSTEM_PREFIX) ||
-            textPart.text.startsWith(SYSTEM_MESSAGE_PREFIX) ||
-            textPart.text.includes(HEARTBEAT_MARKER))
-        ) {
+        if (textPart?.text && typeof textPart.text === "string" && isContextText(textPart.text)) {
           isContext = true;
         }
       }
@@ -178,7 +170,32 @@ export function mergeHistoryWithOptimistic(finalMessages: Message[], previousMes
       .map((message) => normalizeTextForMatch(getTextFromContent(message.content))),
   );
 
+  const prevAssistantLocals: { ts?: number; text: string; runDuration?: number; thinkingDuration?: number }[] = [];
+  for (const message of previousMessages) {
+    if (message.role === "assistant" && (message.runDuration || message.thinkingDuration)) {
+      prevAssistantLocals.push({
+        ts: message.timestamp,
+        text: normalizeTextForMatch(getTextFromContent(message.content)),
+        runDuration: message.runDuration,
+        thinkingDuration: message.thinkingDuration,
+      });
+    }
+  }
+
   const enriched = finalMessages.map((message) => {
+    if (message.role === "assistant" && prevAssistantLocals.length > 0) {
+      const msgText = normalizeTextForMatch(getTextFromContent(message.content));
+      const prev = prevAssistantLocals.find((p) =>
+        (p.ts && message.timestamp && p.ts === message.timestamp) || (msgText && p.text === msgText),
+      );
+      if (prev) {
+        const carry: Partial<Message> = {};
+        if (prev.runDuration && !message.runDuration) carry.runDuration = prev.runDuration;
+        if (prev.thinkingDuration && !message.thinkingDuration) carry.thinkingDuration = prev.thinkingDuration;
+        if (Object.keys(carry).length > 0) return { ...message, ...carry };
+      }
+      return message;
+    }
     if (message.role !== "user") return message;
     const optimistic = optimisticByNorm.get(normalizeTextForMatch(getTextFromContent(message.content)));
     if (!optimistic || !Array.isArray(optimistic.content)) return message;

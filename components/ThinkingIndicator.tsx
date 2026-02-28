@@ -12,7 +12,6 @@ export function ThinkingIndicator({ visible, startTime, label }: ThinkingIndicat
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Reset elapsed when hidden
   useEffect(() => {
     if (!visible) setElapsedSeconds(0);
   }, [visible]);
@@ -47,21 +46,21 @@ export function ThinkingIndicator({ visible, startTime, label }: ThinkingIndicat
 
   return (
     <div
-      className="flex flex-col gap-0.5 transition-opacity duration-300"
+      className="transition-opacity duration-300"
       style={{ opacity: visible ? 1 : 0.01 }}
     >
-      <div className="text-sm text-muted-foreground flex items-center">
-        {isCompacting && visible && <span className="mr-1.5"><CompactingIcon /></span>}
+      <div className="text-xs text-muted-foreground/50 flex items-baseline">
+        {isCompacting && visible && <span className="mr-1.5 self-center"><CompactingIcon /></span>}
         <span>{displayLabel}</span>
         <span className="inline-flex w-5">
           <span className="animate-[dotFade_1.4s_ease-in-out_infinite]">.</span>
           <span className="animate-[dotFade_1.4s_ease-in-out_0.2s_infinite]">.</span>
           <span className="animate-[dotFade_1.4s_ease-in-out_0.4s_infinite]">.</span>
         </span>
+        {startTime && elapsedSeconds > 0 && visible && (
+          <span>{elapsedSeconds}s</span>
+        )}
       </div>
-      {startTime && elapsedSeconds > 0 && visible && (
-        <div className={`text-2xs text-muted-foreground/50 tabular-nums ${isCompacting ? "ml-6" : ""}`}>{elapsedSeconds}s</div>
-      )}
     </div>
   );
 }
