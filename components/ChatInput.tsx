@@ -511,7 +511,7 @@ export const ChatInput = forwardRef<ChatInputHandle, {
       {/* Morphing center: textarea ↔ scroll-to-bottom pill */}
       <div
         ref={glassPillRef}
-        className={`relative flex-1 overflow-hidden transition-colors outline-none ${isPill ? 'rounded-full' : 'rounded-2xl border border-border/50 shadow-sm backdrop-blur-sm'}`}
+        className={`relative flex-1 overflow-hidden transition-colors outline-none rounded-full`}
         onClick={isPill ? onScrollToBottom : undefined}
         role={isPill ? "button" : undefined}
         tabIndex={isPill ? 0 : undefined}
@@ -520,15 +520,13 @@ export const ChatInput = forwardRef<ChatInputHandle, {
           minHeight: "46px",
           maxHeight: "calc(200px - 154px * var(--lp, 0))",
           cursor: isPill ? "pointer" : "text",
-          background: isPill ? "oklch(from var(--background) l c h / 0.30)" : "oklch(from var(--card) l c h / calc(0.9 - 0.5 * var(--sp, 0)))",
-          backdropFilter: isPill
-            ? (isMobileDevice ? "blur(12px) saturate(1.8)" : 'url("#filter_liquidGlassPill")')
-            : undefined,
-          WebkitBackdropFilter: isPill
-            ? (isMobileDevice ? "blur(12px) saturate(1.8)" : 'url("#filter_liquidGlassPill")')
-            : undefined,
-          border: isPill ? "1px solid oklch(from var(--foreground) l c h / 0.15)" : undefined,
-          boxShadow: isPill ? "0 6px 8px rgba(0,0,0,0.15)" : undefined,
+          background: isPill
+            ? "oklch(from var(--background) l c h / 0.30)"
+            : "oklch(from var(--background) l c h / 0.30)",
+          backdropFilter: isMobileDevice ? "blur(12px) saturate(1.8)" : 'url("#filter_liquidGlassPill")',
+          WebkitBackdropFilter: isMobileDevice ? "blur(12px) saturate(1.8)" : 'url("#filter_liquidGlassPill")',
+          border: "1px solid oklch(from var(--foreground) l c h / 0.15)",
+          boxShadow: "0 2px 4px rgba(0,0,0,0.08)",
         } as React.CSSProperties}
       >
         {/* Attachment preview strip */}

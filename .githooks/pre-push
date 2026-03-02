@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+echo "[pre-push] Running checks..."
+
+echo "[pre-push] Typechecking..."
+pnpm typecheck
+
+echo "[pre-push] Linting..."
+pnpm lint
+
+echo "[pre-push] Running tests..."
+pnpm test
+
+echo "[pre-push] All checks passed."
