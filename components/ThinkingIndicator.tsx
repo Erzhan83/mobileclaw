@@ -46,8 +46,11 @@ export function ThinkingIndicator({ visible, startTime, label }: ThinkingIndicat
 
   return (
     <div
-      className="transition-opacity duration-300"
-      style={{ opacity: visible ? 1 : 0, transform: "translateZ(0)" }}
+      style={{
+        opacity: visible ? 1 : 0,
+        transition: `opacity ${visible ? "200ms" : "800ms"}`,
+        transform: "translateZ(0)",
+      }}
     >
       <div className="text-xs text-muted-foreground/50 flex items-baseline">
         {isCompacting && visible && <span className="mr-1.5 self-center"><CompactingIcon /></span>}
