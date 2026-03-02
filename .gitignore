@@ -31,7 +31,7 @@ out/
 ios/MobileClaw/Resources/web/
 .api_backup_for_export/
 
-# Claude worktrees
-.claude/worktrees/
+# Claude
+.claude/
 .codex/
 worktrees
