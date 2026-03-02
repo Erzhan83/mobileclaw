@@ -155,6 +155,20 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     connectInternal(url);
   }, [connectInternal, clearReconnectTimer]);
 
+  /**
+   * Forces an immediate reconnect using the last known URL.
+   * Useful for resume-from-sleep/background recovery where the socket can look
+   * "open" locally but be stale server-side.
+   */
+  const reconnectNow = useCallback(() => {
+    clearReconnectTimer();
+    if (!urlRef.current || intentionalCloseRef.current) return false;
+    reconnectingRef.current = true;
+    reconnectAttemptRef.current = 0;
+    connectInternal(urlRef.current);
+    return true;
+  }, [clearReconnectTimer, connectInternal]);
+
   /** Call after a successful protocol handshake to enable auto-reconnect. */
   const markEstablished = useCallback(() => {
     everEstablishedRef.current = true;
@@ -193,6 +207,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   return {
     connectionState,
     connect,
+    reconnectNow,
     disconnect,
     sendMessage,
     isConnected: connectionState === "connected",

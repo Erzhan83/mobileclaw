@@ -133,6 +133,7 @@ final class WebSocketManager: NSObject, @unchecked Sendable, URLSessionWebSocket
             : "http://\(wsURL.host ?? "localhost"):\(wsURL.port ?? 80)"
         request.setValue(origin, forHTTPHeaderField: "Origin")
         task = session?.webSocketTask(with: request)
+        task?.maximumMessageSize = 16 * 1024 * 1024  // 16 MB
         task?.resume()
         listen()
     }

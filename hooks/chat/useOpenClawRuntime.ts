@@ -92,6 +92,10 @@ function isReasoningBlockStart(data: Record<string, unknown>): boolean {
   return /new[_ -]?block|block[_ -]?start|new[_ -]?segment|segment[_ -]?start|start[_ -]?block|start[_ -]?segment/.test(joined);
 }
 
+const RESUME_FORCE_RECONNECT_MS = 60_000;
+const RESUME_SYNC_COOLDOWN_MS = 5_000;
+const SLEEP_GAP_CHECK_MS = 15_000;
+
 export function useOpenClawRuntime({
   backendMode,
   isNative,
@@ -134,6 +138,10 @@ export function useOpenClawRuntime({
   const connectNonceRef = useRef<string | null>(null);
 
   const historyPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hiddenAtRef = useRef<number | null>(null);
+  const lastResumeSyncAtRef = useRef(0);
+  const lastSocketActivityAtRef = useRef(Date.now());
+  const lastClockTickAtRef = useRef(Date.now());
 
   const pendingSubhistoryRef = useRef<Map<string, string>>(new Map());
   const fetchedSubhistoryRef = useRef<Set<string>>(new Set());
@@ -148,7 +156,7 @@ export function useOpenClawRuntime({
   }>({ insideThinkTag: false, tagBuffer: "" });
 
   const sendWS = useCallback((msg: { type: string; [key: string]: unknown }) => {
-    sendWSMessageRef.current?.(msg as WebSocketMessage);
+    return sendWSMessageRef.current?.(msg as WebSocketMessage) ?? false;
   }, []);
 
   const {
@@ -180,7 +188,7 @@ export function useOpenClawRuntime({
   });
 
   const requestHistory = useCallback(() => {
-    sendWS({
+    return sendWS({
       type: "req",
       id: `history-${Date.now()}`,
       method: "chat.history",
@@ -621,6 +629,7 @@ export function useOpenClawRuntime({
   ]);
 
   const handleWSMessage = useCallback((data: WebSocketMessage) => {
+    lastSocketActivityAtRef.current = Date.now();
     const msg = data as unknown as WSIncomingMessage;
 
     if (msg.type === "event" && msg.event === "connect.challenge") {
@@ -734,9 +743,10 @@ export function useOpenClawRuntime({
     subagentStore,
   ]);
 
-  const { connectionState, connect, disconnect, sendMessage: sendWSMessage, isConnected, markEstablished } = useWebSocket({
+  const { connectionState, connect, reconnectNow, disconnect, sendMessage: sendWSMessage, isConnected, markEstablished } = useWebSocket({
     onMessage: handleWSMessage,
     onOpen: () => {
+      lastSocketActivityAtRef.current = Date.now();
       setConnectionError(null);
     },
     onError: () => {
@@ -755,9 +765,77 @@ export function useOpenClawRuntime({
       console.log(`[Page] Reconnecting (attempt ${attempt}, ${delay}ms delay)`);
     },
     onReconnected: () => {
+      lastSocketActivityAtRef.current = Date.now();
       console.log("[Page] Reconnected — re-handshake will follow via connect.challenge");
     },
   });
+
+  const syncHistoryAfterResume = useCallback((reason: string, forceReconnect = false) => {
+    if (backendMode !== "openclaw") return;
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    if (connectionState === "connecting" || connectionState === "reconnecting") return;
+
+    const now = Date.now();
+    if (now - lastResumeSyncAtRef.current < RESUME_SYNC_COOLDOWN_MS) return;
+    lastResumeSyncAtRef.current = now;
+
+    const inactiveFor = now - lastSocketActivityAtRef.current;
+    const shouldForceReconnect = forceReconnect || inactiveFor >= RESUME_FORCE_RECONNECT_MS;
+    if (shouldForceReconnect || connectionState !== "connected") {
+      console.log(`[WS] Resume sync (${reason}) -> reconnect (inactive ${inactiveFor}ms)`);
+      reconnectNow();
+      return;
+    }
+
+    const sent = requestHistory();
+    if (!sent) {
+      console.log(`[WS] Resume sync (${reason}) history request failed -> reconnect`);
+      reconnectNow();
+    } else {
+      console.log(`[WS] Resume sync (${reason}) requested chat.history`);
+    }
+  }, [backendMode, connectionState, reconnectNow, requestHistory]);
+
+  useEffect(() => {
+    if (backendMode !== "openclaw") return;
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAtRef.current = Date.now();
+        return;
+      }
+      const hiddenFor = hiddenAtRef.current ? Date.now() - hiddenAtRef.current : 0;
+      hiddenAtRef.current = null;
+      syncHistoryAfterResume("visibility", hiddenFor >= RESUME_FORCE_RECONNECT_MS);
+    };
+
+    const onFocus = () => syncHistoryAfterResume("focus");
+    const onOnline = () => syncHistoryAfterResume("online", true);
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("online", onOnline);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [backendMode, syncHistoryAfterResume]);
+
+  useEffect(() => {
+    if (backendMode !== "openclaw") return;
+    lastClockTickAtRef.current = Date.now();
+    const timer = setInterval(() => {
+      const now = Date.now();
+      const gap = now - lastClockTickAtRef.current;
+      lastClockTickAtRef.current = now;
+      if (gap >= RESUME_FORCE_RECONNECT_MS) {
+        syncHistoryAfterResume("clock-gap", true);
+      }
+    }, SLEEP_GAP_CHECK_MS);
+
+    return () => clearInterval(timer);
+  }, [backendMode, syncHistoryAfterResume]);
 
   useEffect(() => {
     sendWSMessageRef.current = sendWSMessage;
