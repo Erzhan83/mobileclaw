@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { mergeHistoryWithOptimistic } from "@/lib/chat/historyResponse";
+import { mergeHistoryWithOptimistic, prepareHistoryMessages } from "@/lib/chat/historyResponse";
 import type { Message } from "@/types/chat";
 
 describe("mergeHistoryWithOptimistic", () => {
@@ -33,4 +33,45 @@ describe("mergeHistoryWithOptimistic", () => {
     expect(merged).toHaveLength(2);
     expect(merged[1].id).toBe("u-1");
   });
+});
+
+describe("prepareHistoryMessages", () => {
+  it("filters internal cmdfetch runs without relying on assistant text prefixes", () => {
+    const allRawMessages = [
+      { role: "user", content: [{ type: "text", text: "hello" }], runId: "run-1" },
+      { role: "assistant", content: [{ type: "text", text: "world" }], runId: "run-1" },
+      { role: "user", content: [{ type: "text", text: "/commands" }], runId: "cmdfetch-100" },
+      { role: "assistant", content: [{ type: "text", text: "not prefixed output /status /model /foo /bar /baz /qux /quux /corge" }], runId: "cmdfetch-100" },
+    ] as Array<Record<string, unknown>>;
+
+    const result = prepareHistoryMessages({
+      allRawMessages,
+      parseServerCommands: () => [],
+      coreCommandNames: new Set<string>(),
+    });
+
+    expect(result.rawMessages).toHaveLength(2);
+    expect(result.rawMessages.map((m) => m.role)).toEqual(["user", "assistant"]);
+  });
+
+  it.each(["run_id", "idempotencyKey", "idempotency_key", "id"] as const)(
+    "filters internal cmdfetch runs when id is stored in %s",
+    (fieldName) => {
+      const allRawMessages = [
+        { role: "user", content: [{ type: "text", text: "hello" }], runId: "run-1" },
+        { role: "assistant", content: [{ type: "text", text: "world" }], runId: "run-1" },
+        { role: "user", content: [{ type: "text", text: "/commands" }], [fieldName]: "cmdfetch-200" },
+        { role: "assistant", content: [{ type: "text", text: "server commands..." }], [fieldName]: "cmdfetch-200" },
+      ] as Array<Record<string, unknown>>;
+
+      const result = prepareHistoryMessages({
+        allRawMessages,
+        parseServerCommands: () => [],
+        coreCommandNames: new Set<string>(),
+      });
+
+      expect(result.rawMessages).toHaveLength(2);
+      expect(result.rawMessages.map((m) => m.role)).toEqual(["user", "assistant"]);
+    },
+  );
 });
