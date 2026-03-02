@@ -4,7 +4,7 @@ import reactHooksPlugin from "eslint-plugin-react-hooks";
 
 export default tseslint.config(
   // ── Ignores ────────────────────────────────────────────────────────────────
-  { ignores: [".next/", "node_modules/", ".claude/", "public/", "*.config.*"] },
+  { ignores: [".next/", ".next-ios/", "ios/", "node_modules/", ".claude/", "public/", "worktrees/", "*.config.*"] },
 
   // ── typescript-eslint recommended + type-checked ───────────────────────────
   ...tseslint.configs.recommendedTypeChecked,

@@ -1,13 +1,15 @@
 #!/bin/sh
 set -eu
 
+export PATH="$HOME/.bun/bin:$PATH"
+
 echo "[pre-push] Running checks..."
 
 echo "[pre-push] Typechecking..."
-pnpm typecheck
+bun run typecheck
 
 echo "[pre-push] Linting..."
-pnpm lint
+bunx --bun eslint .
 
 echo "[pre-push] Running tests..."
 pnpm test
