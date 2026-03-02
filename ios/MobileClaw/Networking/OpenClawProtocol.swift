@@ -10,7 +10,7 @@ final class OpenClawProtocol {
 
     private var activeRunId: String?
     private var sessionKey: String = "main"
-    private var pendingHistoryJSON: String?
+    private var pendingHistory: [[String: Any]]?
     nonisolated(unsafe) private var historyPollTimer: Timer?
     private var lastLoggedHistoryCount: Int?
     private var pendingSubhistoryByRequestId: [String: String] = [:]
@@ -248,14 +248,11 @@ final class OpenClawProtocol {
             return m
         }
 
-        guard let data = try? JSONSerialization.data(withJSONObject: processedMessages),
-              let json = String(data: data, encoding: .utf8) else { return }
-
         if bridge.isReady {
-            forwardHistoryToWeb(json)
+            forwardHistoryToWeb(processedMessages)
         } else {
             print("[Protocol] WebView not ready, queuing history (\(rawMessages.count) messages)")
-            pendingHistoryJSON = json
+            pendingHistory = processedMessages
         }
 
         for childKey in extractSpawnChildSessionKeys(from: rawMessages) {
@@ -313,26 +310,27 @@ final class OpenClawProtocol {
     }
 
     func flushPendingHistory() {
-        guard let json = pendingHistoryJSON else { return }
-        pendingHistoryJSON = nil
+        guard let history = pendingHistory else { return }
+        pendingHistory = nil
         print("[Protocol] Flushing queued history to WebView")
-        forwardHistoryToWeb(json)
+        forwardHistoryToWeb(history)
     }
 
-    private func forwardHistoryToWeb(_ json: String) {
+    private func forwardHistoryToWeb(_ messages: [[String: Any]]) {
+        // Use callAsyncJavaScript to pass history as a bridged argument instead of
+        // inlining megabytes of JSON in a JS source string. This avoids the expensive
+        // JS-literal parse step and keeps the WebView responsive during history load.
         let js = """
-        (function() {
-            var msgs = \(json);
-            window.__bridge?.receive({ type: 'messages:history', payload: msgs });
-            // Scroll to bottom after history loads
-            setTimeout(function() {
-                window.__bridge?.receive({ type: 'scroll:toBottom' });
-            }, 100);
-        })()
+        window.__bridge?.receive({ type: 'messages:history', payload: msgs });
         """
         Task {
             do {
-                _ = try await bridge.webView?.evaluateJavaScript(js)
+                _ = try await bridge.webView?.callAsyncJavaScript(
+                    js,
+                    arguments: ["msgs": messages],
+                    in: nil,
+                    in: .page
+                )
             } catch {
                 print("[Protocol] History forward error: \(error)")
             }
