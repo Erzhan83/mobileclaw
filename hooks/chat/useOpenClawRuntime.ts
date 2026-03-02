@@ -60,6 +60,7 @@ interface UseOpenClawRuntimeOptions extends StreamActions {
   setIsStreaming: (value: boolean) => void;
   setStreamingId: React.Dispatch<React.SetStateAction<string | null>>;
   setHistoryLoaded: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsInitialConnecting: React.Dispatch<React.SetStateAction<boolean>>;
   onHistoryLoaded: () => void;
   beginContentArrival: () => void;
   setThinkingStartTime: React.Dispatch<React.SetStateAction<number | null>>;
@@ -116,6 +117,7 @@ export function useOpenClawRuntime({
   setIsStreaming,
   setStreamingId,
   setHistoryLoaded,
+  setIsInitialConnecting,
   onHistoryLoaded,
   beginContentArrival,
   setThinkingStartTime,
@@ -374,6 +376,7 @@ export function useOpenClawRuntime({
     onHistoryReceived();
     onHistoryLoadedAfterSwitch();
     setHistoryLoaded(true);
+    setIsInitialConnecting(false);
     const shouldAutoScroll = !hasAutoScrolledInitialHistoryRef.current || sessionSwitching;
     if (shouldAutoScroll) onHistoryLoaded();
     hasAutoScrolledInitialHistoryRef.current = true;
@@ -387,6 +390,7 @@ export function useOpenClawRuntime({
     setAwaitingResponse,
     setCurrentModel,
     setHistoryLoaded,
+    setIsInitialConnecting,
     setIsStreaming,
     setMessages,
     setServerCommands,
@@ -746,8 +750,12 @@ export function useOpenClawRuntime({
       setConnectionError("Connection error");
     },
     onInitialConnectFail: () => {
+      setIsInitialConnecting(false);
       setConnectionError("Could not reach server");
       if (!isDetachedRef.current && !isNativeRef.current) setShowSetup(true);
+    },
+    onInitialRetrying: () => {
+      setIsInitialConnecting(true);
     },
     onClose: () => {
       stopHistoryPolling();

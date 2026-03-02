@@ -38,6 +38,7 @@ interface UseModeBootstrapOptions {
   setIsDetached: React.Dispatch<React.SetStateAction<boolean>>;
   setIsNative: React.Dispatch<React.SetStateAction<boolean>>;
   setUploadDisabled: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsInitialConnecting: React.Dispatch<React.SetStateAction<boolean>>;
   setServerCommands: React.Dispatch<React.SetStateAction<Command[]>>;
   isDetachedRef: React.MutableRefObject<boolean>;
   isNativeRef: React.MutableRefObject<boolean>;
@@ -63,6 +64,7 @@ export function useModeBootstrap({
   setIsDetached,
   setIsNative,
   setUploadDisabled,
+  setIsInitialConnecting,
   setServerCommands,
   isDetachedRef,
   isNativeRef,
@@ -145,6 +147,7 @@ export function useModeBootstrap({
       gatewayTokenRef.current = getSearchParam("token");
       setBackendMode("openclaw");
       setOpenclawUrl(embedUrl);
+      setIsInitialConnecting(true);
       connect(toWsUrl(embedUrl));
       return;
     }
@@ -191,6 +194,7 @@ export function useModeBootstrap({
             setServerCommands(JSON.parse(cached) as Command[]);
           }
         } catch {}
+        setIsInitialConnecting(true);
         connect(toWsUrl(savedUrl));
       } else {
         if (!detached) setShowSetup(true);
@@ -206,6 +210,7 @@ export function useModeBootstrap({
     setBackendMode,
     setCurrentModel,
     setHistoryLoaded,
+    setIsInitialConnecting,
     setMessages,
     setOpenclawUrl,
     setServerCommands,
@@ -259,6 +264,7 @@ export function useModeBootstrap({
     lmStudioConfigRef.current = null;
     lmStudioHandlerRef.current = null;
     setOpenclawUrl(config.url);
+    setIsInitialConnecting(true);
     connect(toWsUrl(config.url));
   }, [
     connect,
@@ -271,6 +277,7 @@ export function useModeBootstrap({
     setConnectionError,
     setCurrentModel,
     setHistoryLoaded,
+    setIsInitialConnecting,
     setIsDemoMode,
     setMessages,
     setOpenclawUrl,

@@ -110,6 +110,7 @@ export default function Home() {
   const [isNative, setIsNative] = useState(false);
   const [uploadDisabled, setUploadDisabled] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [isInitialConnecting, setIsInitialConnecting] = useState(false);
 
   const { theme, toggleTheme } = useTheme();
   const { zenMode, toggleZenMode } = useZenMode();
@@ -329,6 +330,7 @@ export default function Home() {
     setIsStreaming,
     setStreamingId,
     setHistoryLoaded,
+    setIsInitialConnecting,
     onHistoryLoaded: scrollToBottom,
     beginContentArrival,
     setThinkingStartTime,
@@ -389,6 +391,7 @@ export default function Home() {
     setIsDetached,
     setIsNative,
     setUploadDisabled,
+    setIsInitialConnecting,
     setServerCommands,
     isDetachedRef,
     isNativeRef,
@@ -606,7 +609,7 @@ export default function Home() {
         openclawUrl={openclawUrl}
         isDemoMode={isDemoMode}
         backendMode={backendMode}
-        showSetup={showSetup}
+        showSetup={showSetup && !isInitialConnecting}
         connectionError={connectionError}
         onSetupConnect={(config: ConnectionConfig) => {
           setShowSetup(false);
@@ -661,6 +664,19 @@ export default function Home() {
         quotePopupRef={quotePopupRef}
         onAcceptQuote={handleAcceptQuote}
       />
+
+      {isInitialConnecting && (
+        <div
+          className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background"
+          style={{ animation: "fadeIn 300ms ease-out 600ms both" }}
+        >
+          <svg className="mb-4 h-8 w-8 text-muted-foreground" style={{ animation: "spin 1s linear infinite" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+            <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+          </svg>
+          <span className="text-sm text-muted-foreground">Starting up…</span>
+        </div>
+      )}
 
       <ChatComposerBar
         isNative={isNative}
