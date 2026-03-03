@@ -680,10 +680,10 @@ export const ChatInput = forwardRef<ChatInputHandle, {
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 4v12a2 2 0 0 0 2 2h8" /><path d="m16 14 4 4-4 4" /></svg>
             </span>
-            {/* Send face — also serves as default/disabled state */}
+            {/* Send face — only when there's content to send */}
             <span
               className="absolute inset-0 flex items-center justify-center bg-primary text-primary-foreground rounded-full transition-opacity duration-200"
-              style={{ opacity: (!showStop && !showQueue) ? 1 : 0 }}
+              style={{ opacity: showSend ? 1 : 0 }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></svg>
             </span>
