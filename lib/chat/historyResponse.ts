@@ -218,7 +218,10 @@ export function mergeHistoryWithOptimistic(finalMessages: Message[], previousMes
       );
       if (prev) {
         const carry: Partial<Message> = {};
-        if (prev.id && prev.id !== message.id) carry.id = prev.id;
+        // Only carry over streaming/run IDs (e.g. "run-abc"), never hist-* IDs.
+        // History re-fetches can shift indices, so carrying hist-40 onto what is
+        // now hist-41 would create duplicate React keys.
+        if (prev.id && prev.id !== message.id && !prev.id.startsWith("hist-")) carry.id = prev.id;
         if (prev.runDuration && !message.runDuration) carry.runDuration = prev.runDuration;
         if (prev.thinkingDuration && !message.thinkingDuration) carry.thinkingDuration = prev.thinkingDuration;
         if (Object.keys(carry).length > 0) return { ...message, ...carry };

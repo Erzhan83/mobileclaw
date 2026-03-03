@@ -54,6 +54,29 @@ describe("mergeHistoryWithOptimistic", () => {
     expect(merged[1].id).toBe("run-abc");
   });
 
+  it("does not carry hist-* IDs across index shifts (prevents duplicate keys)", () => {
+    // Previous render had hist-40 = "Hello" and hist-41 = "World"
+    const previous: Message[] = [
+      { role: "assistant", id: "hist-40", timestamp: 1000, content: [{ type: "text", text: "Hello" }] },
+      { role: "assistant", id: "hist-41", timestamp: 2000, content: [{ type: "text", text: "World" }] },
+    ];
+
+    // Re-fetch shifted indices: hist-41 = "Hello", hist-42 = "World"
+    const history: Message[] = [
+      { role: "user", id: "hist-40", timestamp: 500, content: [{ type: "text", text: "New msg" }] },
+      { role: "assistant", id: "hist-41", timestamp: 1000, content: [{ type: "text", text: "Hello" }] },
+      { role: "assistant", id: "hist-42", timestamp: 2000, content: [{ type: "text", text: "World" }] },
+    ];
+
+    const merged = mergeHistoryWithOptimistic(history, previous);
+    const ids = merged.map((m) => m.id);
+    // All IDs must be unique — no duplicates
+    expect(new Set(ids).size).toBe(ids.length);
+    // hist-* IDs should NOT be overwritten by old hist-* IDs
+    expect(ids).toContain("hist-41");
+    expect(ids).toContain("hist-42");
+  });
+
   it("still appends optimistic user messages that are missing from history", () => {
     const previous: Message[] = [
       { role: "assistant", id: "hist-0", timestamp: 1000, content: [{ type: "text", text: "Ready" }] },
