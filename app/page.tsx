@@ -553,18 +553,24 @@ export default function Home() {
 
   const prevMsgIdsRef = useRef<Set<string>>(new Set());
   const historyWasLoadedRef = useRef(false);
-  const fadeInIds = useMemo(() => {
-    const currentMsgIds = new Set(displayMessages.map((m) => m.id).filter(Boolean) as string[]);
-    const newIds = new Set<string>();
-    if (historyLoaded && historyWasLoadedRef.current) {
-      for (const id of currentMsgIds) {
-        if (!prevMsgIdsRef.current.has(id)) newIds.add(id);
-      }
+  const stableFadeInIdsRef = useRef<Set<string>>(new Set());
+  // Compute on every render so prevMsgIdsRef stays current (IDs are "new" for
+  // exactly one render cycle).  Stabilize the Set identity so ChatViewport
+  // only re-renders when the actual contents change.
+  const currentMsgIds = new Set(displayMessages.map((m) => m.id).filter(Boolean) as string[]);
+  const nextFadeInIds = new Set<string>();
+  if (historyLoaded && historyWasLoadedRef.current) {
+    for (const id of currentMsgIds) {
+      if (!prevMsgIdsRef.current.has(id)) nextFadeInIds.add(id);
     }
-    prevMsgIdsRef.current = currentMsgIds;
-    historyWasLoadedRef.current = historyLoaded;
-    return newIds;
-  }, [displayMessages, historyLoaded]);
+  }
+  prevMsgIdsRef.current = currentMsgIds;
+  historyWasLoadedRef.current = historyLoaded;
+  const prevFade = stableFadeInIdsRef.current;
+  if (nextFadeInIds.size !== prevFade.size || [...nextFadeInIds].some((id) => !prevFade.has(id))) {
+    stableFadeInIdsRef.current = nextFadeInIds;
+  }
+  const fadeInIds = stableFadeInIdsRef.current;
 
   const inputZoneHeight = "calc(1.5dvh + 3.5rem)";
   const bottomPad = isNative
