@@ -6,7 +6,7 @@ import { MessageRow } from "@/components/MessageRow";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { ZenToggle } from "@/components/ZenToggle";
 import { formatMessageTime, getMessageSide } from "@/lib/messageUtils";
-import { STOP_REASON_INJECTED } from "@/lib/constants";
+import { STOP_REASON_INJECTED, MESSAGE_SEND_ANIMATION } from "@/lib/constants";
 import { ZEN_SLIDE_MS, ZEN_FADE_MS, ZEN_TOGGLE_FRAME_MS } from "@/lib/chat/zenUi";
 import type { Message } from "@/types/chat";
 import type { useSubagentStore } from "@/hooks/useSubagentStore";
@@ -636,9 +636,10 @@ export function ChatViewport({
             const zenToggleExpandedVisual = zenGroupExpanded || zenSlideOpen || zenGroupCollapsing;
             const isZenSiblingRow = zenRenderMode && !!zenMeta && zenMeta.hasMultiple && !zenMeta.isTail;
             const collapsedZenSibling = isZenSiblingRow && !effectiveRowSlideOpen;
+            const isSentUserAnim = msg.id === sentAnimId && msg.role === "user";
             const messageAnimationStyle = !isZenSiblingRow
-              ? msg.id === sentAnimId
-                ? { animation: "messageSend 350ms cubic-bezier(0.34, 1.56, 0.64, 1) both", transformOrigin: "bottom right" }
+              ? (msg.id === sentAnimId && !isSentUserAnim)
+                ? { animation: MESSAGE_SEND_ANIMATION, transformOrigin: "bottom right" }
                 : msg.id && fadeInIds.has(msg.id)
                   ? { animation: "fadeIn 250ms ease-out" }
                   : undefined
@@ -709,7 +710,7 @@ export function ChatViewport({
                 )}
                 <div
                   style={messageRowWrapperStyle}
-                  onAnimationEnd={!isZenSiblingRow && msg.id === sentAnimId ? onSentAnimationEnd : undefined}
+                  onAnimationEnd={!isZenSiblingRow && msg.id === sentAnimId && !isSentUserAnim ? onSentAnimationEnd : undefined}
                 >
                   <MessageRow
                     message={msg}
@@ -726,6 +727,8 @@ export function ChatViewport({
                     zenGroupSlideOpen={effectiveRowSlideOpen}
                     zenGroupFadeVisible={effectiveRowFadeVisible}
                     onZenGroupToggle={undefined}
+                    isSentAnim={isSentUserAnim}
+                    onSentAnimationEnd={isSentUserAnim ? onSentAnimationEnd : undefined}
                   />
                 </div>
               </React.Fragment>
