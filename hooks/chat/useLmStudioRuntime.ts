@@ -38,7 +38,9 @@ export function useLmStudioRuntime({
 
     const config = lmStudioConfigRef.current;
     const callbacks: LmStudioCallbacks = {
-      onStreamStart: (_runId) => {},
+      onStreamStart: (_runId) => {
+        setIsStreaming(true);
+      },
       onThinking: (runId, text, segment) => {
         if (text) beginContentArrival();
         setStreamingId(runId);

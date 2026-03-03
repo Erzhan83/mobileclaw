@@ -136,7 +136,7 @@ export function InlineMarkdown({ text, cursor }: { text: string; cursor?: React.
         <ul key={`ul-${i}`} className="my-1.5 flex flex-col gap-0.5">
           {listItems.map((item, j) => (
             <li key={j} className="flex gap-1.5 text-foreground" style={{ paddingLeft: `${item.depth * 8 + 4}px` }}>
-              <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-muted-foreground" />
+              <span className="h-1 w-1 shrink-0 rounded-full bg-muted-foreground" style={{ marginTop: "0.75em" }} />
               <span>{renderInline(item.text)}{listIsLast && j === listItems.length - 1 ? cursor : undefined}</span>
             </li>
           ))}

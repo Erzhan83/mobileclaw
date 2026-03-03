@@ -662,9 +662,7 @@ export const ChatInput = forwardRef<ChatInputHandle, {
               height: "calc(40px * (1 - var(--sp, 0)))",
               minWidth: 0,
               pointerEvents: isPill ? "none" : "auto",
-              transition: (isActive && !queueFull)
-                ? "opacity 200ms, transform 200ms"
-                : "transform 200ms",
+              transition: "opacity 200ms, transform 200ms",
             } as React.CSSProperties}
             aria-label={showStop ? "Stop" : showQueue ? "Queue" : "Send"}
           >

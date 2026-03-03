@@ -553,15 +553,18 @@ export default function Home() {
 
   const prevMsgIdsRef = useRef<Set<string>>(new Set());
   const historyWasLoadedRef = useRef(false);
-  const fadeInIds = new Set<string>();
-  const currentMsgIds = new Set(displayMessages.map((m) => m.id).filter(Boolean) as string[]);
-  if (historyLoaded && historyWasLoadedRef.current) {
-    for (const id of currentMsgIds) {
-      if (!prevMsgIdsRef.current.has(id)) fadeInIds.add(id);
+  const fadeInIds = useMemo(() => {
+    const currentMsgIds = new Set(displayMessages.map((m) => m.id).filter(Boolean) as string[]);
+    const newIds = new Set<string>();
+    if (historyLoaded && historyWasLoadedRef.current) {
+      for (const id of currentMsgIds) {
+        if (!prevMsgIdsRef.current.has(id)) newIds.add(id);
+      }
     }
-  }
-  prevMsgIdsRef.current = currentMsgIds;
-  historyWasLoadedRef.current = historyLoaded;
+    prevMsgIdsRef.current = currentMsgIds;
+    historyWasLoadedRef.current = historyLoaded;
+    return newIds;
+  }, [displayMessages, historyLoaded]);
 
   const inputZoneHeight = "calc(1.5dvh + 3.5rem)";
   const bottomPad = isNative
