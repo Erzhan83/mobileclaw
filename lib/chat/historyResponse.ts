@@ -237,8 +237,10 @@ export function mergeHistoryWithOptimistic(finalMessages: Message[], previousMes
       ? message.content.filter((part) => part.type !== "text" && part.type !== "image_url" && part.type !== "image")
       : [];
 
-    if (optimisticText.length === 0 && images.length === 0) return message;
-    return { ...message, content: [...optimisticText, ...nonTextNonImage, ...images] };
+    if (optimisticText.length === 0 && images.length === 0) {
+      return { ...message, id: optimistic.id };
+    }
+    return { ...message, id: optimistic.id, content: [...optimisticText, ...nonTextNonImage, ...images] };
   });
 
   const previousServerCount = previousMessages.filter((message) => !(message.role === "user" && message.id?.startsWith("u-"))).length;

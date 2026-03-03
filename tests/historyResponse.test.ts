@@ -19,6 +19,24 @@ describe("mergeHistoryWithOptimistic", () => {
     expect(mergeHistoryWithOptimistic(staleHistory, previous)).toEqual(previous);
   });
 
+  it("preserves optimistic u-* ID when history includes the same user message", () => {
+    const previous: Message[] = [
+      { role: "assistant", id: "hist-0", timestamp: 1000, content: [{ type: "text", text: "Ready" }] },
+      { role: "user", id: "u-2000", timestamp: 2000, content: [{ type: "text", text: "Hello world" }] },
+    ];
+
+    const history: Message[] = [
+      { role: "assistant", id: "hist-0", timestamp: 1000, content: [{ type: "text", text: "Ready" }] },
+      { role: "user", id: "hist-1", timestamp: 2000, content: [{ type: "text", text: "Hello world" }] },
+      { role: "assistant", id: "hist-2", timestamp: 2001, content: [{ type: "text", text: "Hi!" }] },
+    ];
+
+    const merged = mergeHistoryWithOptimistic(history, previous);
+    expect(merged).toHaveLength(3);
+    // The user message should keep its optimistic ID, not the hist-1 from server
+    expect(merged[1].id).toBe("u-2000");
+  });
+
   it("still appends optimistic user messages that are missing from history", () => {
     const previous: Message[] = [
       { role: "assistant", id: "hist-0", timestamp: 1000, content: [{ type: "text", text: "Ready" }] },
