@@ -266,8 +266,10 @@ export function useScrollManager(
   }, [clearBounceTransform, clearManualStreamUnpin, isStreamingRef]);
 
   // Auto-scroll: whenever messages change, snap to bottom if pinned.
+  // During streaming, the rAF loop handles smooth scrolling instead.
   useLayoutEffect(() => {
     if (!pinnedToBottomRef.current || messages.length === 0) return;
+    if (isStreamingRef.current) return;
     const el = scrollRef.current;
     if (!el) return;
     if (!hasScrolledInitialRef.current) {
@@ -277,15 +279,31 @@ export function useScrollManager(
     el.scrollTop = el.scrollHeight;
   }, [messages, clearBounceTransform]);
 
-  // ResizeObserver: catch content-height changes when NOT streaming (e.g. images loading).
+  // ResizeObserver: catch content-height changes (e.g. images loading, zen collapses).
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const content = el.firstElementChild;
+    const content = el.firstElementChild as HTMLElement | null;
     if (!content) return;
 
     const ro = new ResizeObserver(() => {
       if (isAnimatingScrollRef.current) return;
+
+      if (isStreamingRef.current) {
+        // During streaming, only allow content to grow — never shrink.
+        // This prevents zen collapses from reducing scrollHeight and causing
+        // the scroll position to jump back up.
+        const currentHeight = content.offsetHeight;
+        const prevMin = parseFloat(content.style.minHeight) || 0;
+        if (currentHeight > prevMin) {
+          content.style.minHeight = `${currentHeight}px`;
+        }
+        return;
+      }
+
+      // Clear the streaming height lock when not streaming.
+      content.style.minHeight = "";
+
       if ((pinnedToBottomRef.current || scrollGraceRef.current) && el.scrollHeight > el.clientHeight) {
         el.scrollTop = el.scrollHeight;
         pinnedToBottomRef.current = true;
@@ -295,30 +313,66 @@ export function useScrollManager(
     return () => ro.disconnect();
   }, []);
 
-  // rAF loop: during streaming, continuously pin scroll to bottom.
-  // SmoothGrow uses explicit height + CSS transition which delays scrollHeight
-  // updates by ~150ms. The ResizeObserver on the content div only fires once
-  // SmoothGrow's transition propagates, so tool call pills (which add height
-  // in a single jump) can appear below the viewport before the scroll catches up.
-  // This loop checks every frame and scrolls immediately, costing only a few
-  // ref reads per frame when idle.
+  // rAF loop: during streaming, smoothly scroll toward bottom.
+  // Uses velocity with momentum — desired speed scales with gap size,
+  // actual velocity smoothly blends toward desired. No stutters on retarget.
+  // All constants are normalized to 60fps so behavior is consistent at any refresh rate.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     let id: number;
-    const tick = () => {
+    // velocity in px-per-60fps-frame; multiplied by frameScale before applying
+    let velocity = 0;
+    let lastTime = 0;
+    let wasStreaming = isStreamingRef.current;
+
+    // Tuning constants (normalized to 60fps baseline)
+    const TARGET_FRAME_MS = 16.67;      // 60fps reference frame duration
+    const SCROLL_MIN_DIFF = 0.5;        // px — gap below which we consider "at bottom"
+    const SCROLL_VELOCITY_FACTOR = 0.04; // desired velocity as fraction of remaining gap
+    const SCROLL_MOMENTUM_FACTOR = 0.12; // per-frame blend toward desired velocity (60fps)
+    const SCROLL_MIN_VELOCITY = 0.5;     // px/frame minimum while actively scrolling
+
+    const tick = (timestamp: number) => {
+      if (wasStreaming && !isStreamingRef.current) {
+        const content = el.firstElementChild as HTMLElement | null;
+        if (content) content.style.minHeight = "";
+      }
+      wasStreaming = isStreamingRef.current;
+
+      const rawDelta = lastTime ? timestamp - lastTime : TARGET_FRAME_MS;
+      // Clamp to 50ms to prevent huge jumps after tab switch or system sleep
+      const deltaTime = Math.min(rawDelta, 50);
+      lastTime = timestamp;
+      // Scale factors: 1.0 at 60fps, 0.5 at 120fps, 2.0 at 30fps
+      const frameScale = deltaTime / TARGET_FRAME_MS;
+
       if (
         (pinnedToBottomRef.current || scrollGraceRef.current) &&
         (isStreamingRef.current || scrollGraceRef.current) &&
         el.scrollHeight > el.clientHeight
       ) {
-        el.scrollTop = el.scrollHeight;
+        const target = el.scrollHeight - el.clientHeight;
+        const diff = target - el.scrollTop;
+
+        if (diff > SCROLL_MIN_DIFF) {
+          // Desired velocity proportional to gap: more lines behind = faster
+          const desiredVelocity = diff * SCROLL_VELOCITY_FACTOR;
+          // Exponential smoothing toward desired velocity, frame-rate independent
+          velocity += (desiredVelocity - velocity) * (1 - Math.pow(1 - SCROLL_MOMENTUM_FACTOR, frameScale));
+          velocity = Math.max(velocity, SCROLL_MIN_VELOCITY);
+          el.scrollTop = Math.min(el.scrollTop + velocity * frameScale, target);
+        } else {
+          velocity = 0;
+        }
+      } else {
+        velocity = 0;
       }
       id = requestAnimationFrame(tick);
     };
     id = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(id);
-  }, [isStreamingRef]);
+  }, []);
 
   // Unpin auto-scroll when user actively scrolls up (wheel or touch),
   // and apply elastic bounce when scrolling past the bottom.
