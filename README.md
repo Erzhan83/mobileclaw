@@ -1,22 +1,21 @@
 <div align="center">
 
 # MobileClaw
-
-<img src="public/logo.png" alt="MobileClaw" width="120" />
-
 A mobile-first chat UI for [OpenClaw](https://github.com/openclaw/openclaw) and LM Studio
 
 **[Try the Live Demo](https://mobileclaw.vercel.app?demo)**
 
 **iOS App Soon™!**
 
-<br />
+## Why? 
+### These two screens show the same conversation
 
-<img src="docs/screenshots/hero-dark.png" alt="MobileClaw dark mode" width="280" />&nbsp;&nbsp;
+### OpenClaw
+<img width="500" height="460" alt="Screenshot 2026-03-04 at 21 39 47" src="https://github.com/user-attachments/assets/14fa517b-80f5-463c-a4ac-78ad817a52c1" />
 
-</div>
+### With MobileClaw
+<img width="392" height="502" alt="Screenshot 2026-03-04 at 21 39 54" src="https://github.com/user-attachments/assets/846390f9-4750-4002-a481-b0fb26f77f51" />
 
-<br />
 
 ## Features
 
