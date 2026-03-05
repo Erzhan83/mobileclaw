@@ -283,7 +283,9 @@ function ThinkingPill({ text }: { text: string }) {
     );
   }
 
-  const firstLine = displayText.split("\n")[0];
+  const lines = displayText.split("\n");
+  const firstLine = lines[0];
+  const restText = lines.slice(1).join("\n");
 
   return (
     <SlideContent open={mounted}>
@@ -305,7 +307,7 @@ function ThinkingPill({ text }: { text: string }) {
           </svg>
         </div>
         <SlideContent open={expanded}>
-          <p className="whitespace-pre-wrap break-words overflow-hidden">{displayText}</p>
+          <p className="whitespace-pre-wrap break-words overflow-hidden">{restText}</p>
         </SlideContent>
       </div>
     </SlideContent>
