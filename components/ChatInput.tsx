@@ -291,11 +291,11 @@ export const ChatInput = forwardRef<ChatInputHandle, {
   };
 
   useEffect(() => {
-    if (ref.current) {
-      ref.current.style.height = "auto";
-      ref.current.style.height = Math.min(ref.current.scrollHeight, 160) + "px";
-    }
-  }, [value]);
+    const el = ref.current;
+    if (!el || el.offsetWidth === 0) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+  }, [value, filterDims.w]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (showSuggestions) {
