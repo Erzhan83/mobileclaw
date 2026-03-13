@@ -249,7 +249,23 @@ function unwrapLineUnderscoreEmphasis(text: string): string {
     .join("\n");
 }
 
-function ThinkingPill({ text }: { text: string }) {
+const STREAMING_VISIBLE_SENTENCES = 3;
+
+function splitIntoSentences(text: string): string[] {
+  const sentences: string[] = [];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    // Split on sentence-ending punctuation followed by space
+    const parts = trimmed.split(/(?<=[.!?])\s+/);
+    for (const p of parts) {
+      if (p.trim()) sentences.push(p.trim());
+    }
+  }
+  return sentences;
+}
+
+function ThinkingPill({ text, isStreaming }: { text: string; isStreaming?: boolean }) {
   const displayText = unwrapLineUnderscoreEmphasis(text);
   const isEmpty = !displayText.trim();
   const [mounted, setMounted] = useState(false);
@@ -290,9 +306,9 @@ function ThinkingPill({ text }: { text: string }) {
     );
   }
 
-  const lines = displayText.split("\n");
-  const firstLine = lines[0];
-  const restText = lines.slice(1).join("\n");
+  const sentences = splitIntoSentences(displayText);
+  const visible = sentences.slice(-STREAMING_VISIBLE_SENTENCES);
+  const startIdx = Math.max(0, sentences.length - STREAMING_VISIBLE_SENTENCES);
 
   return (
     <SlideContent open={mounted}>
@@ -303,18 +319,36 @@ function ThinkingPill({ text }: { text: string }) {
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded((v) => !v); } }}
         className="text-xs leading-[1.5] text-muted-foreground/50 cursor-pointer"
       >
-        <div className="flex items-center gap-1">
-          <span className="truncate break-words overflow-hidden">{firstLine}</span>
-          <svg
-            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-            className="shrink-0 opacity-60 transition-transform duration-200"
-            style={{ transform: expanded ? "rotate(0deg)" : "rotate(-90deg)" }}
-          >
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </div>
+        <SlideContent open={!expanded}>
+          <div className="overflow-hidden">
+            {visible.map((sentence, i) => (
+              <p
+                key={startIdx + i}
+                className="whitespace-pre-wrap break-words overflow-hidden animate-[thinkingSentence_0.5s_ease-out_both]"
+              >
+                {sentence}
+              </p>
+            ))}
+          </div>
+          <div className="flex items-center gap-1 mt-0.5">
+            {isStreaming && (
+              <span className="inline-flex items-center gap-0.5 opacity-40">
+                <span className="animate-[dotFade_1.4s_ease-in-out_infinite]">.</span>
+                <span className="animate-[dotFade_1.4s_ease-in-out_0.2s_infinite]">.</span>
+                <span className="animate-[dotFade_1.4s_ease-in-out_0.4s_infinite]">.</span>
+              </span>
+            )}
+            <svg
+              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+              className="shrink-0 opacity-60 transition-transform duration-200"
+              style={{ transform: "rotate(-90deg)" }}
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </div>
+        </SlideContent>
         <SlideContent open={expanded}>
-          <p className="whitespace-pre-wrap break-words overflow-hidden">{restText}</p>
+          <p className="whitespace-pre-wrap break-words overflow-hidden">{displayText}</p>
         </SlideContent>
       </div>
     </SlideContent>
@@ -394,7 +428,13 @@ function getAssistantDurationText(message: Message): string | null {
 
 function AssistantCopyButton({ text, durationText }: { text: string; durationText?: string | null }) {
   const [copied, setCopied] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const resetTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   useEffect(() => () => {
     if (resetTimerRef.current !== null) {
@@ -418,27 +458,29 @@ function AssistantCopyButton({ text, durationText }: { text: string; durationTex
   };
 
   return (
-    <div className="flex items-center justify-start gap-1.5 pt-0.5">
-      <button
-        type="button"
-        onClick={() => { void copy(); }}
-        aria-label={copied ? "Copied" : "Copy contents"}
-        title={copied ? "Copied" : "Copy contents"}
-        className="inline-flex h-8 w-4 items-center justify-start rounded-full p-0 text-muted-foreground/35 transition-colors hover:text-muted-foreground/70"
-      >
-        {copied ? (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="m5 12 5 5L20 7" />
-          </svg>
-        ) : (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <rect x="9" y="9" width="10" height="10" rx="2" />
-            <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
-          </svg>
-        )}
-      </button>
-      {durationText ? <span className="text-2xs text-muted-foreground/50">{durationText}</span> : null}
-    </div>
+    <SlideContent open={mounted}>
+      <div className="flex items-center justify-start gap-1.5 pt-0.5 animate-[thinkingSentence_0.5s_ease-out_both]">
+        <button
+          type="button"
+          onClick={() => { void copy(); }}
+          aria-label={copied ? "Copied" : "Copy contents"}
+          title={copied ? "Copied" : "Copy contents"}
+          className="inline-flex h-8 w-4 items-center justify-start rounded-full p-0 text-muted-foreground/35 transition-colors hover:text-muted-foreground/70"
+        >
+          {copied ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m5 12 5 5L20 7" />
+            </svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="9" y="9" width="10" height="10" rx="2" />
+              <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+            </svg>
+          )}
+        </button>
+        {durationText ? <span className="text-2xs text-muted-foreground/50">{durationText}</span> : null}
+      </div>
+    </SlideContent>
   );
 }
 
@@ -755,14 +797,14 @@ export function MessageRow({
 
   if (!isUser) {
     if (message.reasoning && !hasThinkingParts) {
-      pushAssistantBlock("reasoning", <ThinkingPill text={message.reasoning} />);
+      pushAssistantBlock("reasoning", <ThinkingPill text={message.reasoning} isStreaming={isStreaming} />);
     }
 
     if (Array.isArray(message.content)) {
       const contentParts = message.content;
       contentParts.forEach((part, i) => {
         if (part.type === "thinking") {
-          pushAssistantBlock(`thinking-${i}`, <ThinkingPill text={part.thinking || part.text || ""} />);
+          pushAssistantBlock(`thinking-${i}`, <ThinkingPill text={part.thinking || part.text || ""} isStreaming={isStreaming} />);
           return;
         }
         if (isToolCallPart(part)) {
@@ -812,7 +854,7 @@ export function MessageRow({
           const showCursor = isStreaming && isLastText && !hasLaterNonText;
 
           if (extractedThinking && !hasThinkingParts && !message.reasoning) {
-            pushAssistantBlock(`text-thinking-${i}`, <ThinkingPill text={extractedThinking} />);
+            pushAssistantBlock(`text-thinking-${i}`, <ThinkingPill text={extractedThinking} isStreaming={isStreaming} />);
           }
           if (cleanText) {
             pushAssistantBlock(
@@ -837,7 +879,7 @@ export function MessageRow({
       const { thinking: extractedThinking, text: rawCleanText } = stripThinkTags(text);
       const cleanText = stripFinalTags(rawCleanText);
       if (extractedThinking && !hasThinkingParts && !message.reasoning) {
-        pushAssistantBlock("fallback-thinking", <ThinkingPill text={extractedThinking} />);
+        pushAssistantBlock("fallback-thinking", <ThinkingPill text={extractedThinking} isStreaming={isStreaming} />);
       }
       if (cleanText) {
         pushAssistantBlock(
