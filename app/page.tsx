@@ -25,6 +25,7 @@ import {
 } from "@/lib/chat/streamMutations";
 import { buildDisplayMessages } from "@/lib/chat/messageTransforms";
 import { applyNativeZenMode } from "@/lib/chat/zenBridge";
+import { DEFAULT_INPUT_ZONE_HEIGHT, getChatBottomPad } from "@/lib/chat/layout";
 
 import type {
   BackendMode,
@@ -66,19 +67,6 @@ import type { PluginActionInvocation } from "@/lib/plugins/types";
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? null;
 const ZEN_TOGGLE_PIN_MS = 700;
 const ZEN_BOTTOM_THRESHOLD_PX = 12;
-
-// Bottom padding for the message list to clear the fixed composer bar.
-// Non-detached uses calc(svh + rem) so clearance scales with the composer's
-// own dvh-based sizing across device sizes.
-const BOTTOM_PAD_SVH = 4.5;
-const BOTTOM_PAD_BASE_REM = 7.5;
-const BOTTOM_PAD_QUEUED_REM = 10.5;
-const BOTTOM_PAD_PINNED_REM = 13.5;
-// Detached mode has a separate spacer, so fixed rem is sufficient.
-const BOTTOM_PAD_DETACHED_BASE = "4rem";
-const BOTTOM_PAD_DETACHED_QUEUED = "7rem";
-const BOTTOM_PAD_DETACHED_PINNED = "10rem";
-const BOTTOM_PAD_NATIVE = "8rem";
 
 export default function Home() {
   const [openclawUrl, setOpenclawUrl] = useState<string | null>(null);
@@ -706,14 +694,14 @@ export default function Home() {
   }
   const fadeInIds = stableFadeInIdsRef.current;
 
-  const inputZoneHeight = "calc(1.5dvh + 3.5rem)";
-  const bottomPad = isNative
-    ? BOTTOM_PAD_NATIVE
-    : pinnedSubagent
-      ? (isDetached ? BOTTOM_PAD_DETACHED_PINNED : `calc(${BOTTOM_PAD_SVH}svh + ${BOTTOM_PAD_PINNED_REM}rem)`)
-      : queuedMessage
-        ? (isDetached ? BOTTOM_PAD_DETACHED_QUEUED : `calc(${BOTTOM_PAD_SVH}svh + ${BOTTOM_PAD_QUEUED_REM}rem)`)
-        : (isDetached ? BOTTOM_PAD_DETACHED_BASE : `calc(${BOTTOM_PAD_SVH}svh + ${BOTTOM_PAD_BASE_REM}rem)`);
+  const inputZoneHeight = DEFAULT_INPUT_ZONE_HEIGHT;
+  const bottomPad = getChatBottomPad({
+    isNative,
+    isDetached,
+    inputZoneHeight,
+    hasQueued: !!queuedMessage,
+    hasPinnedSubagent: !!pinnedSubagent,
+  });
 
   const lastUserMessage = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -738,7 +726,7 @@ export default function Home() {
   }
 
   return (
-    <div ref={appRef} className={`relative flex flex-col overflow-hidden ${hideChrome ? "" : "bg-background"}`} style={{ height: "100dvh" }}>
+    <div ref={appRef} className={`relative flex flex-col overflow-hidden ${hideChrome ? "" : "bg-background"}`} style={{ height: isDetached ? "100%" : "100dvh" }}>
       <ChatChrome
         hideChrome={hideChrome}
         openclawUrl={openclawUrl}

@@ -679,13 +679,19 @@ export function MessageRow({
   const assistantCopyText = message.role === "assistant" ? getCopyableAssistantText(message) : "";
   const assistantDurationText = getAssistantDurationText(message);
   const showAssistantCopyButton = !isStreaming && !!assistantCopyText;
+  const hasStructuredCommandResponse =
+    !!message.isCommandResponse &&
+    (!!message.reasoning || (
+      Array.isArray(message.content) &&
+      message.content.some((part) => part.type === "thinking" || isToolCallPart(part) || isPluginPart(part))
+    ));
 
   if (message.role === "toolResult" || message.role === "tool_result" || message.role === "tool") {
     return null;
   }
 
   // Command response pill — expandable pill for slash command responses
-  if (message.isCommandResponse) {
+  if (message.isCommandResponse && !hasStructuredCommandResponse) {
     if (!text) {
       return (
         <div key="loading" className="flex -mt-1.5">

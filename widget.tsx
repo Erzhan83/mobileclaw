@@ -8,12 +8,13 @@ import { WidgetContextProvider } from "./lib/widgetContext"
 export interface ChatWidgetProps {
   wsUrl?: string
   className?: string
+  demo?: boolean
 }
 
-export function ChatWidget({ wsUrl, className }: ChatWidgetProps) {
+export function ChatWidget({ wsUrl, className, demo }: ChatWidgetProps) {
   const modeValue = useMemo(
-    () => ({ isDetached: true, noBorder: true, wsUrl: wsUrl ?? null }),
-    [wsUrl],
+    () => ({ isDetached: true, noBorder: true, wsUrl: wsUrl ?? null, demo: demo ?? false }),
+    [wsUrl, demo],
   )
 
   return (

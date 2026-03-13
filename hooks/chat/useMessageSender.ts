@@ -25,6 +25,10 @@ interface UseMessageSenderOptions {
   cancelCommandFetch: () => void;
 }
 
+function makeClientMessageId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export function useMessageSender({
   backendMode,
   isDemoMode,
@@ -79,7 +83,7 @@ export function useMessageSender({
     const isNewConversationCommand = slashCommandName === "/new";
     setLastCommand(slashCommandName);
     const openClawRunId = backendMode === "openclaw"
-      ? `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      ? makeClientMessageId("run")
       : null;
 
     if (!isDetachedRef.current) void requestNotificationPermission();
@@ -98,13 +102,13 @@ export function useMessageSender({
       }
     }
 
-    const userMsgId = `u-${Date.now()}`;
+    const userMsgId = makeClientMessageId("u");
     const userMsg: Message = { role: "user", content: contentParts, id: userMsgId, timestamp: Date.now(), isHidden: isSlashCommand };
     setSentAnimId(userMsg.id!);
 
     if (isSlashCommand) {
-      const placeholderId = openClawRunId || `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const placeholder: Message = { role: "assistant", content: [], id: placeholderId, timestamp: Date.now(), isCommandResponse: true };
+      const placeholderId = openClawRunId || makeClientMessageId("cmd");
+      const placeholder: Message = { role: "assistant", content: [], id: placeholderId, timestamp: Date.now(), isCommandResponse: true, isHidden: isNewConversationCommand };
       setMessages((prev) => {
         const base = isNewConversationCommand ? [] : prev;
         return [...base, userMsg, placeholder];
@@ -160,7 +164,7 @@ export function useMessageSender({
     setAwaitingResponse(true);
     setThinkingStartTime(Date.now());
 
-    const runId = openClawRunId || `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const runId = openClawRunId || makeClientMessageId("run");
     activeRunIdRef.current = runId;
 
     sendWS({

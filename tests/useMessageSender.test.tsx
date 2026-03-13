@@ -95,4 +95,50 @@ describe("useMessageSender", () => {
     expect(next.some((m) => m.id === "hist-0")).toBe(false);
     expect(next.find((m) => m.role === "assistant" && m.isCommandResponse)).toBeTruthy();
   });
+
+  it("creates unique optimistic user ids even within the same millisecond", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_700_000_200_000);
+    const randomSpy = vi.spyOn(Math, "random");
+    randomSpy
+      .mockReturnValueOnce(0.111111111)
+      .mockReturnValueOnce(0.222222222)
+      .mockReturnValueOnce(0.333333333)
+      .mockReturnValueOnce(0.444444444);
+
+    const sendWS = vi.fn();
+    let state: Message[] = [];
+    const setMessages = vi.fn((updater: React.SetStateAction<Message[]>) => {
+      state = typeof updater === "function" ? updater(state) : updater;
+    });
+
+    const { result } = renderHook(() => useMessageSender({
+      backendMode: "openclaw",
+      isDemoMode: false,
+      isConnected: true,
+      sendWS,
+      sessionKeyRef: { current: "main" } as React.RefObject<string>,
+      activeRunIdRef: { current: null },
+      isDetachedRef: { current: true },
+      pinnedToBottomRef: { current: false },
+      pinLockUntilRef: { current: 0 },
+      demoHandlerRef: { current: null },
+      lmStudioHandlerRef: { current: null },
+      setMessages,
+      setSentAnimId: vi.fn(),
+      setAwaitingResponse: vi.fn(),
+      setThinkingStartTime: vi.fn(),
+      setIsStreaming: vi.fn(),
+      cancelCommandFetch: vi.fn(),
+    }));
+
+    await act(async () => {
+      await result.current.sendMessage("first");
+      await result.current.sendMessage("second");
+    });
+
+    const userIds = state.filter((msg) => msg.role === "user").map((msg) => msg.id);
+    expect(userIds).toHaveLength(2);
+    expect(new Set(userIds).size).toBe(2);
+    expect(userIds.every((id) => id?.startsWith("u-"))).toBe(true);
+  });
 });

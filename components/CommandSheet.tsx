@@ -51,6 +51,7 @@ export const COMMAND_GROUPS: CommandGroup[] = [
     label: "More",
     commands: [
       { name: "/commands", description: "List all slash commands." },
+      { name: "/demo", description: "Run a deterministic fake tool stream." },
       { name: "/help", description: "Show available commands." },
     ],
   },

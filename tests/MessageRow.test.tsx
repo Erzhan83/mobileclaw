@@ -431,6 +431,31 @@ describe("MessageRow", () => {
     expect(screen.getByText("Running...")).toBeInTheDocument();
   });
 
+  it("renders rich command responses as structured assistant blocks", () => {
+    const message: Message = {
+      role: "assistant",
+      content: [
+        { type: "thinking", text: "demo thought" },
+        { type: "text", text: "demo speech" },
+        {
+          type: "tool_call",
+          name: "Demo: Lookup Workspace",
+          arguments: "{\"demo\":true}",
+          status: "success",
+          result: "ok",
+        },
+      ],
+      id: "test-10b",
+      isCommandResponse: true,
+    };
+
+    render(<MessageRow message={message} isStreaming={false} />);
+    expect(screen.getByText("demo thought")).toBeInTheDocument();
+    expect(screen.getByText("demo speech")).toBeInTheDocument();
+    expect(screen.getByText("Demo: Lookup Workspace")).toBeInTheDocument();
+    expect(screen.queryByText("Running...")).not.toBeInTheDocument();
+  });
+
   it("renders full assistant content when zen mode is off", () => {
     const message: Message = {
       role: "assistant",

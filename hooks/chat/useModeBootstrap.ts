@@ -89,7 +89,7 @@ export function useModeBootstrap({
       notifyWebViewReady();
     }
 
-    if (getSearchParam("demo") !== null) {
+    if (getSearchParam("demo") !== null || widgetCtx?.demo) {
       resetThinkingState();
       setIsDemoMode(true);
       setBackendMode("demo");
@@ -121,7 +121,7 @@ export function useModeBootstrap({
   }, [handleNativeBridgeMessage, isNativeRef]);
 
   useEffect(() => {
-    if (getSearchParam("demo") !== null) return;
+    if (getSearchParam("demo") !== null || widgetCtx?.demo) return;
     if (isDemoMode) return;
 
     // In native mode, web waits for config:connection from Swift — no auto-connect.
