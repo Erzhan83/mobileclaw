@@ -1,9 +1,12 @@
 "use client"
 
-import { useMemo } from "react"
+import { forwardRef, useMemo } from "react"
 import "./app/globals.css"
 import Home from "./app/page"
 import { WidgetContextProvider } from "./lib/widgetContext"
+import type { ChatInputHandle } from "./components/ChatInput"
+
+export type { ChatInputHandle }
 
 export interface ChatWidgetProps {
   wsUrl?: string
@@ -11,17 +14,19 @@ export interface ChatWidgetProps {
   demo?: boolean
 }
 
-export function ChatWidget({ wsUrl, className, demo }: ChatWidgetProps) {
-  const modeValue = useMemo(
-    () => ({ isDetached: true, noBorder: true, wsUrl: wsUrl ?? null, demo: demo ?? false }),
-    [wsUrl, demo],
-  )
+export const ChatWidget = forwardRef<ChatInputHandle, ChatWidgetProps>(
+  function ChatWidget({ wsUrl, className, demo }, ref) {
+    const modeValue = useMemo(
+      () => ({ isDetached: true, noBorder: true, wsUrl: wsUrl ?? null, demo: demo ?? false }),
+      [wsUrl, demo],
+    )
 
-  return (
-    <div className={className} data-mobileclaw-embedded>
-      <WidgetContextProvider value={modeValue}>
-        <Home />
-      </WidgetContextProvider>
-    </div>
-  )
-}
+    return (
+      <div className={className} data-mobileclaw-embedded>
+        <WidgetContextProvider value={modeValue}>
+          <Home ref={ref} />
+        </WidgetContextProvider>
+      </div>
+    )
+  },
+)

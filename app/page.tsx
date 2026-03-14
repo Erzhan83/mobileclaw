@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from "react";
 
 import { createLmStudioHandler, type LmStudioConfig } from "@/lib/lmStudio";
 import { notifyMessageComplete } from "@/lib/notifications";
@@ -68,7 +68,7 @@ const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? null;
 const ZEN_TOGGLE_PIN_MS = 700;
 const ZEN_BOTTOM_THRESHOLD_PX = 12;
 
-export default function Home() {
+export default forwardRef<ChatInputHandle>(function Home(_props, forwardedRef) {
   const [openclawUrl, setOpenclawUrl] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, _setIsStreaming] = useState(false);
@@ -504,6 +504,10 @@ export default function Home() {
   const isRunActive = awaitingResponse || isStreaming;
   const chatInputRef = useRef<ChatInputHandle | null>(null);
 
+  useImperativeHandle(forwardedRef, () => ({
+    setValue: (v: string) => chatInputRef.current?.setValue(v),
+  }), []);
+
   const {
     queuedMessage,
     handleSendOrQueue,
@@ -839,4 +843,4 @@ export default function Home() {
       />
     </div>
   );
-}
+});
